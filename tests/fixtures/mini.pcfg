@@ -1,0 +1,39 @@
+# Mini gramática de prueba (fixture). Dueño: rol 1.
+# Sirve para programar y probar M1–M8 antes de que exista gramatica/reglas.pcfg v1.
+# Formato C2: A -> B C [p] | A -> B [p] | A -> "w" [p]. Las reglas de cada no terminal suman 1.
+# SN -> SN SP introduce ambigüedad de adjunción a propósito (para probar k-best y E3).
+
+S       -> SV               [1.0]
+
+SV      -> VACC SN          [0.6]
+SV      -> SV SP            [0.4]
+
+SN      -> DET NUC          [0.6]
+SN      -> SERV             [0.15]
+SN      -> DIR              [0.15]
+SN      -> SN SP            [0.1]
+
+NUC     -> NTRAF            [0.4]
+NUC     -> SERV             [0.3]
+NUC     -> NPUERTO NUMERO   [0.3]
+
+SP      -> PORIG SN         [0.4]
+SP      -> PDEST SN         [0.3]
+SP      -> PPUERTO SN       [0.3]
+
+VACC    -> "bloquea"        [0.5]
+VACC    -> "permite"        [0.5]
+DET     -> "el"             [0.6]
+DET     -> "la"             [0.4]
+NTRAF   -> "trafico"        [0.6]
+NTRAF   -> "acceso"         [0.4]
+SERV    -> "ssh"            [0.5]
+SERV    -> "http"           [0.5]
+NPUERTO -> "puerto"         [1.0]
+NUMERO  -> "<NUM>"          [1.0]
+DIR     -> "<IP>"           [0.5]
+DIR     -> "<CIDR>"         [0.5]
+PORIG   -> "desde"          [1.0]
+PDEST   -> "hacia"          [0.5]
+PDEST   -> "a"              [0.5]
+PPUERTO -> "por"            [1.0]

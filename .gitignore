@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+.venv/
+modelos/*
+!modelos/.gitkeep
+informe/*.aux
+informe/*.log
+informe/*.out
+informe/*.toc
+informe/*.synctex.gz
+.DS_Store

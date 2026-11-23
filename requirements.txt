@@ -1,0 +1,3 @@
+# Versiones exactas (literal d de los entregables). El resto es la stdlib de Python 3.13.
+numpy==2.5.4        # estructuras de datos: arreglos para CYK, Viterbi y regresión logística
+matplotlib          # solo figuras de experimentos; fijar la versión exacta al instalar (pip freeze | grep matplotlib)

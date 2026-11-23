@@ -1,0 +1,82 @@
+{
+ "_nota": "Resultados esperados del CYK con tests/fixtures/mini.pcfg, calculados por enumeración exhaustiva. Las probabilidades no están en logaritmo.",
+ "casos": [
+  {
+   "orden": "bloquea el ssh desde 10.0.0.0/8",
+   "terminales": [
+    "bloquea",
+    "el",
+    "ssh",
+    "desde",
+    "<CIDR>"
+   ],
+   "n_arboles": 2,
+   "probs_ordenadas": [
+    0.0001944,
+    4.86e-05
+   ]
+  },
+  {
+   "orden": "permite el trafico hacia 192.168.1.10 por el puerto 80",
+   "terminales": [
+    "permite",
+    "el",
+    "trafico",
+    "hacia",
+    "<IP>",
+    "por",
+    "el",
+    "puerto",
+    "<NUM>"
+   ],
+   "n_arboles": 5,
+   "probs_ordenadas": [
+    1.5116544e-06,
+    3.779136e-07,
+    3.779136e-07,
+    9.44784e-08,
+    9.44784e-08
+   ]
+  },
+  {
+   "orden": "bloquea ssh",
+   "terminales": [
+    "bloquea",
+    "ssh"
+   ],
+   "n_arboles": 1,
+   "probs_ordenadas": [
+    0.0225
+   ]
+  },
+  {
+   "orden": "permite http desde 172.16.0.0/16",
+   "terminales": [
+    "permite",
+    "http",
+    "desde",
+    "<CIDR>"
+   ],
+   "n_arboles": 2,
+   "probs_ordenadas": [
+    0.00027,
+    6.75e-05
+   ]
+  },
+  {
+   "orden": "bloquea el acceso a 10.0.0.5",
+   "terminales": [
+    "bloquea",
+    "el",
+    "acceso",
+    "a",
+    "<IP>"
+   ],
+   "n_arboles": 2,
+   "probs_ordenadas": [
+    7.776e-05,
+    1.944e-05
+   ]
+  }
+ ]
+}

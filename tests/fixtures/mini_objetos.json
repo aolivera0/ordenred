@@ -1,0 +1,11 @@
+{
+  "servicios": {
+    "ssh": ["tcp", 22],
+    "http": ["tcp", 80],
+    "ping": ["icmp", null]
+  },
+  "redes": {
+    "invitados": "192.168.50.0/24",
+    "servidor web": "10.0.0.10"
+  }
+}
