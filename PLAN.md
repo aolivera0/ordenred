@@ -4,9 +4,9 @@
 **Capítulo base:** 24 · *Natural Language Processing*, Russell & Norvig, AIMA 4.ª ed. global (pp. 874–906)
 **Entrega:** lunes 7 de diciembre de 2026 (respuesta al correo del profesor, entregables comprimidos; la envía un solo integrante)
 **Sustentación:** entre el 8 y el 12 de diciembre de 2026, **sin computador, solo papel y lápiz** (ver §11)
-**Grupo (7, el mismo del video):** Sebas Alarcón · Edwin Corleone · Mateo Herrera · Angel Olivera ·
-Sebastián Umaña · Alejandro Arguello · Nicolas Siabatto. Los Lineamientos (§3.1.5) fijan un máximo de 5;
-el grupo lo gestionará con el profesor.
+**Grupo (7):** Jose Sebastian Alarcon Bravo · Alejandro Argüello Muñoz · Edwin Felipe Pinilla Peralta ·
+Sergio Nicolas Siabatto Cleves · Angel Humberto Olivera Pinzón · Mateo Herrera Muñoz · Juan Sebastián Umaña Camacho.
+Los Lineamientos (§3.1.5) fijan un máximo de 5; el grupo lo gestionará con el profesor.
 
 ---
 
@@ -134,15 +134,15 @@ Proyecto/
 El detalle completo (contratos entre módulos, tareas por día, hitos, reparto del informe, escenarios y
 ejercicios de sustentación) está en [DIVISION_DE_TRABAJO.md](DIVISION_DE_TRABAJO.md).
 
-| # | Rol | Módulos |
-|---|---|---|
-| 1 | Arquitectura sintáctica | M5 PCFG + CYK, M6 aprendizaje de la PCFG |
-| 2 | Semántica y reglas | M7 intérprete semántico, M8 iptables y ACL |
-| 3 | Modelos de lenguaje | M2 n-gramas, suavizado y corrector |
-| 4 | Clasificación y etiquetado | M3 Naive Bayes y regresión logística, M4 HMM + Viterbi |
-| 5 | Datos y pruebas | M1 tokenizador, corpus, conjunto humano, pruebas de integración |
-| 6 | Integración e interfaz | Pipeline, CLI, GUI, UML, manuales |
-| 7 | Experimentos e informe | E1–E5, PDF, correo, guía de sustentación |
+| # | Rol | Integrante | Módulos |
+|---|---|---|---|
+| 1 | Arquitectura sintáctica | Sergio Nicolas Siabatto Cleves | M5 PCFG + CYK, M6 aprendizaje de la PCFG |
+| 2 | Semántica y reglas | Jose Sebastian Alarcon Bravo | M7 intérprete semántico, M8 iptables y ACL |
+| 3 | Modelos de lenguaje | Juan Sebastián Umaña Camacho | M2 n-gramas, suavizado y corrector |
+| 4 | Clasificación y etiquetado | Mateo Herrera Muñoz | M3 Naive Bayes y regresión logística, M4 HMM + Viterbi |
+| 5 | Datos y pruebas | Alejandro Argüello Muñoz | M1 tokenizador, corpus, conjunto humano, pruebas de integración |
+| 6 | Integración e interfaz | Edwin Felipe Pinilla Peralta | Pipeline, CLI, GUI, UML, manuales |
+| 7 | Experimentos e informe | Angel Humberto Olivera Pinzón | E1–E5, PDF, correo, guía de sustentación |
 
 ## 11. Preparación de la sustentación (papel y lápiz)
 

@@ -16,15 +16,17 @@
 
 | # | Rol | Módulos | Integrante | Revisor de código |
 |---|---|---|---|---|
-| 1 | Arquitectura sintáctica: PCFG y CYK | M5, M6, `arbol.py` | | Rol 2 |
-| 2 | Semántica y generación de reglas | M7, M8, `objetos.py` | | Rol 1 |
-| 3 | Modelos de lenguaje y corrector | M2 (n-gramas, suavizado, corrector) | | Rol 4 |
-| 4 | Clasificación y etiquetado | M3 (Naive Bayes, regresión logística), M4 (HMM, Viterbi) | | Rol 3 |
-| 5 | Datos, tokenización y pruebas | M1, generador de corpus, conjunto humano, pruebas de integración | | Rol 7 |
-| 6 | Integración, interfaz y diseño | `pipeline.py`, CLI, GUI, diagramas UML, manuales | | Rol 5 |
-| 7 | Experimentos, informe y sustentación | E1–E5, figuras, edición del PDF, correo, guía de sustentación | | Rol 6 |
+| 1 | Arquitectura sintáctica: PCFG y CYK | M5, M6, `arbol.py` | **Sergio Nicolas Siabatto Cleves** | Rol 2 (Sebastián Alarcón) |
+| 2 | Semántica y generación de reglas | M7, M8, `objetos.py` | **Jose Sebastian Alarcon Bravo** | Rol 1 (Sergio Siabatto) |
+| 3 | Modelos de lenguaje y corrector | M2 (n-gramas, suavizado, corrector) | **Juan Sebastián Umaña Camacho** | Rol 4 (Mateo Herrera) |
+| 4 | Clasificación y etiquetado | M3 (Naive Bayes, regresión logística), M4 (HMM, Viterbi) | **Mateo Herrera Muñoz** | Rol 3 (Juan Sebastián Umaña) |
+| 5 | Datos, tokenización y pruebas | M1, generador de corpus, conjunto humano, pruebas de integración | **Alejandro Argüello Muñoz** | Rol 7 (Angel Olivera) |
+| 6 | Integración, interfaz y diseño | `pipeline.py`, CLI, GUI, diagramas UML, manuales | **Edwin Felipe Pinilla Peralta** | Rol 5 (Alejandro Argüello) |
+| 7 | Experimentos, informe y sustentación | E1–E5, figuras, edición del PDF, correo, guía de sustentación | **Angel Humberto Olivera Pinzón** | Rol 6 (Edwin Pinilla) |
 
-Sugerencia: sorteo, como en el video. El **revisor** lee cada cambio de su compañero antes de que entre a
+Asignación por **sorteo** el 23-nov-2026 a las 19:18 (Python: `random.Random(1939311477).shuffle` sobre la lista
+de integrantes en el orden del documento del Taller 01; la semilla se generó con `secrets.randbits(32)` y
+permite reproducir el resultado). El **revisor** lee cada cambio de su compañero antes de que entre a
 `main` y es su suplente si se enferma o se atrasa.
 
 ### Matriz de responsabilidades (R = responsable, A = apoya)
