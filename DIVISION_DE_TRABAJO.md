@@ -418,11 +418,11 @@ ruidoso (≈ 3 págs.; es la parte más ligada a la asignatura); en el manual t�
 - **Entrega a:** rol 6, rol 1 (`etiquetas_unk` para el CYK), rol 7 (E4).
 
 **Tareas**
-- [ ] **Mar 24–Jue 26:** `NaiveBayes` multinomial con bolsa de palabras y suavizado de Laplace, en log-probabilidades (AIMA §24.1.1).
-- [ ] **Jue 26–Sáb 28:** `RegresionLogistica` multiclase (*softmax*) con descenso por gradiente en NumPy, regularización L2 y vectorizador propio (vocabulario → índice); semilla fija (AIMA §24.1.6, discriminativo frente a generativo).
-- [ ] **Vie 27–Dom 29:** `hmm.py`: estimación de transiciones y emisiones por conteo con suavizado; manejo de palabras desconocidas por sufijo o forma; **Viterbi** en log con tabla NumPy y retroceso (AIMA §24.1.6).
-- [ ] **Dom 29–Lun 30:** contrato con el rol 1: para cada posición `<UNK>`, el HMM propone la etiqueta y el CYK la usa como preterminal.
-- [ ] **Lun 30–Mar 1:** código de **E4**: curvas de aprendizaje (10 %, 25 %, 50 %, 100 % de `train`) de NB vs. RL; exactitud del HMM en palabras desconocidas; matriz de confusión de intenciones.
+- [x] **Mar 24–Jue 26:** `NaiveBayes` multinomial con bolsa de palabras y suavizado de Laplace, en log-probabilidades (AIMA §24.1.1). *(PR del rol 4; `tabla_conteos()` para el ejercicio de sustentación.)*
+- [x] **Jue 26–Sáb 28:** `RegresionLogistica` multiclase (*softmax*) con descenso por gradiente en NumPy, regularización L2 y vectorizador propio (vocabulario → índice); semilla fija (AIMA §24.1.6, discriminativo frente a generativo).
+- [x] **Vie 27–Dom 29:** `hmm.py`: estimación de transiciones y emisiones por conteo con suavizado; manejo de palabras desconocidas por sufijo o forma; **Viterbi** en log con tabla NumPy y retroceso (AIMA §24.1.6). *(PR del rol 4; `tabla_viterbi()` para el ejercicio de sustentación.)*
+- [x] **Dom 29–Lun 30:** contrato con el rol 1: para cada posición `<UNK>`, el HMM propone la etiqueta y el CYK la usa como preterminal. *(`HMM.etiquetas_unk`, ver C6; probado contra `ParserCYK` con `mini.pcfg`. Falta que el pipeline del rol 6 lo conecte.)*
+- [x] **Lun 30–Mar 1:** código de **E4**: curvas de aprendizaje (10 %, 25 %, 50 %, 100 % de `train`) de NB vs. RL; exactitud del HMM en palabras desconocidas; matriz de confusión de intenciones. *(`experimentos/e4_clasificacion_etiquetado.py`; corre hoy con `--fixtures`. La corrida real espera `train/dev.jsonl` y `tokenizar` del rol 5.)*
 - [ ] **Mié 2:** integración y congelamiento.
 
 **Terminado cuando:** intención ≥ 95 % en `dev` limpio; Viterbi coincide con la búsqueda exhaustiva en
