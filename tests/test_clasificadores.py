@@ -162,6 +162,20 @@ class TestNaiveBayes(Temporal):
             NaiveBayes().predecir(["a"])
         with self.assertRaises(RuntimeError):
             NaiveBayes().guardar(self.ruta)
+        for alfa in (-1, float("nan"), float("inf")):
+            with self.subTest(alfa=alfa), self.assertRaises(ValueError):
+                NaiveBayes(alfa=alfa)
+        NaiveBayes(alfa=0)  # sin suavizado sigue permitido
+
+    def test_cargar_json_mal_formado_da_value_error(self):
+        nb = NaiveBayes()
+        nb.entrenar(X_EJEMPLO, Y_EJEMPLO)
+        nb.guardar(self.ruta)
+        completo = json.loads(self.ruta.read_text(encoding="utf-8"))
+        for cambio in ({"docs_por_clase": [1, 2]}, {"conteo_palabras": "x"}, {"alfa": "uno"}):
+            self.ruta.write_text(json.dumps(dict(completo, **cambio)), encoding="utf-8")
+            with self.subTest(cambio=cambio), self.assertRaises(ValueError):
+                NaiveBayes.cargar(self.ruta)
 
     def test_empate_determinista(self):
         nb = NaiveBayes()
@@ -335,6 +349,12 @@ class TestRegresionLogistica(Temporal):
             RegresionLogistica().predecir(["a"])
         with self.assertRaises(RuntimeError):
             RegresionLogistica().guardar(self.ruta)
+        malos = [dict(tasa=0), dict(tasa=-0.1), dict(tasa=float("nan")), dict(tasa=float("inf")),
+                 dict(epocas=-1), dict(l2=-1e-3), dict(l2=float("nan")), dict(l2=float("inf"))]
+        for kw in malos:
+            with self.subTest(**kw), self.assertRaises(ValueError):
+                RegresionLogistica(**kw)
+        RegresionLogistica(epocas=0, l2=0)  # epocas = 0 y l2 = 0 siguen permitidos
 
     def test_ida_y_vuelta(self):
         rl = RegresionLogistica(tasa=0.2, epocas=50, l2=0.01, semilla=3)
@@ -375,6 +395,14 @@ class TestRegresionLogistica(Temporal):
             self.ruta.write_text(json.dumps(contenido), encoding="utf-8")
             with self.subTest(contenido=contenido), self.assertRaises(ValueError):
                 RegresionLogistica.cargar(self.ruta)
+        rl = RegresionLogistica(epocas=5)
+        rl.entrenar(X_SEPARABLE, Y_SEPARABLE)
+        rl.guardar(self.ruta)
+        completo = json.loads(self.ruta.read_text(encoding="utf-8"))
+        for cambio in ({"clases": 5}, {"vocabulario": 3}, {"W": [[1.0], [2.0, 3.0]]}, {"tasa": "x"}):
+            self.ruta.write_text(json.dumps(dict(completo, **cambio)), encoding="utf-8")
+            with self.subTest(cambio=cambio), self.assertRaises(ValueError):
+                RegresionLogistica.cargar(self.ruta)
 
 
 class TestMiniCorpus(unittest.TestCase):
@@ -388,10 +416,28 @@ class TestMiniCorpus(unittest.TestCase):
 
 
 class TestReglasDelProyecto(unittest.TestCase):
-    def test_sin_funciones_prohibidas_de_numpy(self):
-        fuente = (RAIZ / "src" / "ordenred" / "clasificadores.py").read_text(encoding="utf-8")
-        for prohibido in ("linalg", "unique", "bincount", "logaddexp", "scipy", "sklearn", "NotImplementedError"):
-            self.assertIsNone(re.search(prohibido, fuente), prohibido)
+    """Reglas comunes (§1): de NumPy solo arreglos y aritmética; nada de scipy, sklearn ni pandas."""
+
+    ARCHIVOS_DEL_ROL_4 = (
+        RAIZ / "src" / "ordenred" / "clasificadores.py",
+        RAIZ / "src" / "ordenred" / "hmm.py",
+        RAIZ / "src" / "ordenred" / "_persistencia.py",
+        RAIZ / "experimentos" / "e4_clasificacion_etiquetado.py",
+    )
+    PROHIBIDOS = ("linalg", "unique", "bincount", "logaddexp", "scipy", "sklearn", "pandas")
+
+    def test_sin_funciones_ni_paquetes_prohibidos(self):
+        for ruta in self.ARCHIVOS_DEL_ROL_4:
+            fuente = ruta.read_text(encoding="utf-8")
+            for prohibido in self.PROHIBIDOS:
+                with self.subTest(archivo=ruta.name, prohibido=prohibido):
+                    self.assertIsNone(re.search(prohibido, fuente))
+
+    def test_los_modulos_no_son_stubs(self):
+        # El script de E4 sí menciona NotImplementedError: lo atrapa mientras `tokenizar` sea un stub.
+        for ruta in self.ARCHIVOS_DEL_ROL_4[:3]:
+            with self.subTest(archivo=ruta.name):
+                self.assertNotIn("NotImplementedError", ruta.read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

@@ -7,7 +7,8 @@ las clases son las acciones de FormaLogica (`semantica.ACCIONES`).
   §24.1.1, pp. 875–876, con suavizado de Laplace (aditivo), §24.1.4, p. 878.
 - `RegresionLogistica`: modelo **discriminativo** multiclase (*softmax*) entrenado por descenso por
   gradiente con regularización L2, §24.1.6, pp. 881–883 (allí se comparan los enfoques generativo y
-  discriminativo).
+  discriminativo). Para el modelo en sí el libro remite a §19.6.5, p. 702. En §24.1.6 el libro usa un
+  modelo binario por etiqueta (uno por cada categoría); aquí se usa la versión *softmax* multiclase.
 
 Todas las probabilidades se manejan en logaritmo y se normalizan al final con log-sum-exp
 (`_normalizar_log`). Persistencia en JSON (`guardar` / `cargar`) según los acuerdos del rol 4 en C6.
@@ -63,6 +64,9 @@ def _argmax_determinista(clases: list[str], puntajes: dict[str, float]) -> str:
     log(2/9)). Por eso solo se cambia de mejor si la ventaja supera TOLERANCIA_EMPATE; así el
     desempate por orden alfabético se respeta también en esos casos.
 
+    La tolerancia es **absoluta** (1e-9 en escala logarítmica): equivale a un cociente de
+    probabilidades de 1 + 1e-9, así que solo afecta a puntajes que en la práctica están empatados.
+
     Con −inf: (−inf) − (−inf) es nan y `nan > tolerancia` es falso, de modo que nunca cambia el
     mejor; un puntaje finito frente a −inf da +inf y sí lo cambia.
     """
@@ -110,8 +114,8 @@ class NaiveBayes:
     TIPO = "NaiveBayes"
 
     def __init__(self, alfa: float = 1.0) -> None:
-        if alfa < 0:
-            raise ValueError(f"alfa debe ser >= 0, no {alfa}")
+        if not (0 <= alfa < math.inf):  # también rechaza nan
+            raise ValueError(f"alfa debe ser >= 0 y finito, no {alfa}")
         self.alfa = alfa  # suavizado de Laplace (aditivo)
         self.clases: list[str] = []
         self.vocabulario: list[str] = []
@@ -224,11 +228,15 @@ class NaiveBayes:
 
     @classmethod
     def cargar(cls, ruta: str | Path) -> "NaiveBayes":
+        """Lee un modelo guardado con `guardar`. ValueError si el JSON no tiene la forma esperada."""
         datos = leer_json(ruta, cls.TIPO, ("alfa", "docs_por_clase", "conteo_palabras"))
-        modelo = cls(alfa=datos["alfa"])
-        docs = {c: int(n) for c, n in datos["docs_por_clase"].items()}
-        conteo = {c: {w: int(k) for w, k in fila.items()} for c, fila in datos["conteo_palabras"].items()}
-        modelo._fijar_conteos(docs, conteo)
+        try:
+            modelo = cls(alfa=datos["alfa"])
+            docs = {c: int(n) for c, n in datos["docs_por_clase"].items()}
+            conteo = {c: {w: int(k) for w, k in fila.items()} for c, fila in datos["conteo_palabras"].items()}
+            modelo._fijar_conteos(docs, conteo)
+        except (AttributeError, KeyError, TypeError, ValueError, ZeroDivisionError) as e:
+            raise ValueError(f"el archivo de NaiveBayes está mal formado: {e!r}") from None
         return modelo
 
 
@@ -238,7 +246,10 @@ class NaiveBayes:
 
 
 class RegresionLogistica:
-    """Regresión logística multiclase (*softmax*), AIMA §24.1.6, pp. 881–883.
+    """Regresión logística multiclase (*softmax*), AIMA §24.1.6, pp. 881–883 (que remite a §19.6.5, p. 702).
+
+    El libro entrena un modelo binario por etiqueta; aquí un solo modelo *softmax* reparte la probabilidad
+    entre las K clases.
 
     Modelo discriminativo: estima directamente P(c | x) = softmax(x·W)_c sin modelar cómo se
     generan las palabras (a diferencia de Naive Bayes, que es generativo).
@@ -257,6 +268,12 @@ class RegresionLogistica:
     TIPO = "RegresionLogistica"
 
     def __init__(self, tasa: float = 0.1, epocas: int = 200, l2: float = 1e-3, semilla: int = 2026) -> None:
+        if not (0 < tasa < math.inf):
+            raise ValueError(f"tasa debe ser > 0 y finita, no {tasa}")
+        if epocas < 0:
+            raise ValueError(f"epocas debe ser >= 0, no {epocas}")
+        if not (0 <= l2 < math.inf):
+            raise ValueError(f"l2 debe ser >= 0 y finito, no {l2}")
         self.tasa = tasa
         self.epocas = epocas
         self.l2 = l2
@@ -369,12 +386,16 @@ class RegresionLogistica:
 
     @classmethod
     def cargar(cls, ruta: str | Path) -> "RegresionLogistica":
+        """Lee un modelo guardado con `guardar`. ValueError si el JSON no tiene la forma esperada."""
         datos = leer_json(ruta, cls.TIPO, ("tasa", "epocas", "l2", "semilla", "clases", "vocabulario", "W"))
-        modelo = cls(tasa=datos["tasa"], epocas=datos["epocas"], l2=datos["l2"], semilla=datos["semilla"])
-        modelo.clases = list(datos["clases"])
-        modelo._fijar_vocabulario(list(datos["vocabulario"]))
-        modelo.W = None if datos["W"] is None else np.array(datos["W"], dtype=float)
-        modelo.historial_perdida = [float(v) for v in datos.get("historial_perdida", [])]
+        try:
+            modelo = cls(tasa=datos["tasa"], epocas=datos["epocas"], l2=datos["l2"], semilla=datos["semilla"])
+            modelo.clases = list(datos["clases"])
+            modelo._fijar_vocabulario(list(datos["vocabulario"]))
+            modelo.W = None if datos["W"] is None else np.array(datos["W"], dtype=float)
+            modelo.historial_perdida = [float(v) for v in datos.get("historial_perdida", [])]
+        except (AttributeError, KeyError, TypeError, ValueError) as e:
+            raise ValueError(f"el archivo de RegresionLogistica está mal formado: {e!r}") from None
         if modelo.W is None and len(modelo.clases) > 1:
             raise ValueError("W es null pero hay más de una clase: el modelo no tiene pesos")
         if modelo.W is not None and modelo.W.shape != (len(modelo.vocabulario) + 1, len(modelo.clases)):

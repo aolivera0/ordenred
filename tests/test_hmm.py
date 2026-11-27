@@ -16,7 +16,7 @@ from pathlib import Path
 from tests import FIXTURES, tokens_fixture
 from ordenred.corpus import cargar_jsonl
 from ordenred.cyk import ParserCYK
-from ordenred.hmm import HMM, firma
+from ordenred.hmm import HMM, firma, preterminales_de_palabra
 from ordenred.pcfg import PCFG
 
 # Corpus de juguete: 3 oraciones, etiquetas D (determinante), N (nombre), V (verbo).
@@ -392,6 +392,17 @@ class TestPalabrasDesconocidasYErrores(unittest.TestCase):
         self.assertEqual(self.h.etiquetas_unk(palabras, [2, 0]), {2: "N", 0: "V"})
         self.assertEqual(self.h.etiquetas_unk(palabras, []), {})
 
+    def test_permitidas_por_posicion(self):
+        palabras = ["bloquea", "el", "servicio"]
+        # Un dict restringe cada posición por separado; las pedidas que no están en el dict quedan libres.
+        self.assertEqual(self.h.etiquetas_unk(palabras, [0, 2], {2: {"NUM"}}), {0: "V", 2: "NUM"})
+        self.assertEqual(self.h.etiquetas_unk(palabras, [0, 2], {0: {"D"}, 2: {"IF"}}), {0: "D", 2: "IF"})
+        self.assertEqual(self.h.etiquetas_unk(palabras, [2], {}), {2: "N"})
+        with self.assertRaises(ValueError):  # posición del dict que no se pidió
+            self.h.etiquetas_unk(palabras, [2], {0: {"V"}, 2: {"N"}})
+        with self.assertRaises(ValueError):  # posición sin etiqueta común con el modelo
+            self.h.etiquetas_unk(palabras, [0, 2], {0: {"V"}, 2: {"XYZ"}})
+
     def test_posiciones_fuera_de_rango(self):
         for pos in ([3], [-1], [0, 7]):
             with self.subTest(pos=pos), self.assertRaises(ValueError):
@@ -485,15 +496,26 @@ class TestPersistencia(unittest.TestCase):
 class TestIntegracionConCYK(unittest.TestCase):
     """Integración: el HMM propone la etiqueta de una palabra fuera del léxico de la PCFG y el CYK la usa."""
 
-    def test_palabra_fuera_del_lexico(self):
+    @classmethod
+    def setUpClass(cls):
         corpus = cargar_jsonl(FIXTURES / "mini_corpus.jsonl")
         oraciones = [
             [(t.terminal, e) for t, e in zip(tokens_fixture(r["tokens"]), r["etiquetas"])] for r in corpus
         ]
-        h = entrenado(oraciones)
-        g = PCFG.desde_archivo(FIXTURES / "mini.pcfg")
-        permitidas = {r.izq for r in g.reglas if r.es_lexica}
+        cls.h = entrenado(oraciones)
+        cls.g = PCFG.desde_archivo(FIXTURES / "mini.pcfg")
+        cls.lexicos = {r.izq for r in cls.g.reglas if r.es_lexica}
+        cls.de_palabra = preterminales_de_palabra(cls.g)
 
+    def test_preterminales_de_palabra(self):
+        # DIR solo produce "<IP>"/"<CIDR>" y NUMERO solo "<NUM>": no pueden etiquetar una palabra escrita.
+        self.assertEqual(self.lexicos - self.de_palabra, {"DIR", "NUMERO"})
+        self.assertEqual(
+            self.de_palabra, {"VACC", "DET", "NTRAF", "SERV", "NPUERTO", "PORIG", "PDEST", "PPUERTO"}
+        )
+
+    def test_palabra_fuera_del_lexico(self):
+        h, g = self.h, self.g
         terminales = [t.terminal for t in tokens_fixture(["deniega", "ssh"])]
         self.assertNotIn("deniega", g.indice_lexico)
         self.assertFalse(h.es_conocida("deniega"))
@@ -501,14 +523,32 @@ class TestIntegracionConCYK(unittest.TestCase):
         # (6/15 frente a 1/15 de cada otra etiqueta), y VACC → SERV ya se vio dos veces («bloquea ssh»,
         # «permite http»). La única rival por la firma <UNK-a> es PDEST («hacia», «a»), pero
         # π_PDEST = 1/15 y PDEST → SERV nunca se vio.
-        propuesta = h.etiquetas_unk(terminales, [0], permitidas)
-        self.assertEqual(propuesta, {0: "VACC"})
+        for permitidas in (self.lexicos, self.de_palabra):
+            propuesta = h.etiquetas_unk(terminales, [0], permitidas)
+            self.assertEqual(propuesta, {0: "VACC"})
 
         arboles = ParserCYK(g).analizar(terminales, etiquetas_unk=propuesta)
         self.assertGreaterEqual(len(arboles), 1)
         self.assertEqual(arboles[0].etiqueta, "S")
         # Sin la propuesta del HMM, la orden no tiene análisis.
         self.assertEqual(ParserCYK(g).analizar(terminales), [])
+
+    def test_palabra_desconocida_no_recibe_una_categoria_de_terminal_especial(self):
+        h, g = self.h, self.g
+        terminales = [t.terminal for t in tokens_fixture(["bloquea", "el", "trafico", "hacia", "servidor"])]
+        self.assertNotIn("servidor", g.indice_lexico)
+        # Sin restringir a categorías de palabra, el contexto «hacia ___» (PDEST → DIR, visto dos veces)
+        # lleva a DIR, una categoría que en la gramática solo produce "<IP>" o "<CIDR>".
+        self.assertEqual(h.etiquetas_unk(terminales, [4], self.lexicos), {4: "DIR"})
+        # Con la restricción correcta gana SERV: «servidor» cae en <UNK>, que en el corpus emitieron «http»
+        # (SERV) y «por» (PPUERTO), y SERV tiene la mayor P conjunta de las categorías de palabra.
+        propuesta = h.etiquetas_unk(terminales, [4], self.de_palabra)
+        self.assertEqual(propuesta, {4: "SERV"})
+        self.assertEqual(h.etiquetas_unk(terminales, [4], {4: self.de_palabra}), propuesta)
+
+        arboles = ParserCYK(g).analizar(terminales, k=2, etiquetas_unk=propuesta)
+        self.assertGreaterEqual(len(arboles), 1)
+        self.assertEqual(arboles[0].etiqueta, "S")
 
 
 if __name__ == "__main__":

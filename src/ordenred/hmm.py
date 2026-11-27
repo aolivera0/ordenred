@@ -22,6 +22,9 @@ Decisiones de diseño
   frecuencia total es ≤ `umbral_raras` NO se cuenta como ella misma sino solo como su firma
   (`firma(w)`: "<UNK-DIG>", "<UNK-sufijo>" o "<UNK>"). Así las firmas aprenden qué etiquetas suelen
   tener las palabras poco frecuentes, que es lo más parecido a una palabra nunca vista.
+  El reemplazo de las palabras infrecuentes por <UNK>, con símbolos distintos según el tipo de palabra,
+  está en AIMA §24.1.4, p. 878; los rasgos de forma que usan las firmas (sufijo, dígito) son los que el
+  libro propone para etiquetar en §24.1.6, pp. 881–882.
   Consecuencia: una palabra rara del entrenamiento no es «conocida» (`es_conocida` da False) y en la
   predicción se trata igual que una palabra nueva (por su firma).
 - Los terminales especiales ("<IP>", "<CIDR>", "<NUM>", "<RANGO>", "<IFAZ>") son palabras normales y
@@ -50,7 +53,10 @@ _SUFIJOS_POR_LONGITUD = tuple(sorted(SUFIJOS, key=len, reverse=True))  # sort es
 
 
 def firma(palabra: str) -> str:
-    """Clase de forma de una palabra desconocida, para las emisiones del HMM (AIMA §24.1.6, pp. 880–881).
+    """Clase de forma de una palabra desconocida, para las emisiones del HMM.
+
+    Símbolos <UNK> distintos según el tipo de palabra: AIMA §24.1.4, p. 878; rasgos de forma (sufijo,
+    dígito): §24.1.6, pp. 881–882.
 
     "<UNK-DIG>" si contiene un dígito; si no, "<UNK-" + sufijo + ">" con el sufijo más largo de
     `SUFIJOS` en que termina la palabra; si no termina en ninguno, "<UNK>".
@@ -61,6 +67,22 @@ def firma(palabra: str) -> str:
         if palabra.endswith(sufijo):
             return f"<UNK-{sufijo}>"
     return FIRMA_DESCONOCIDA
+
+
+def _es_terminal_especial(terminal: str) -> bool:
+    """True para los terminales por tipo de la gramática ("<IP>", "<CIDR>", "<NUM>"...)."""
+    return terminal.startswith("<") and terminal.endswith(">")
+
+
+def preterminales_de_palabra(pcfg) -> set[str]:
+    """Preterminales con al menos una regla léxica hacia una palabra (no hacia un terminal "<...>").
+
+    `pcfg` es una `PCFG` (se usan `pcfg.reglas`, `ReglaPCFG.es_lexica` y `ReglaPCFG.terminal_lexico`).
+    Es la restricción que el pipeline le pasa a `HMM.etiquetas_unk` para un token de tipo PALABRA: una
+    categoría como DIR, que en la gramática solo produce "<IP>" o "<CIDR>", no puede etiquetar una palabra
+    escrita como «servidor».
+    """
+    return {r.izq for r in pcfg.reglas if r.es_lexica and not _es_terminal_especial(r.terminal_lexico)}
 
 
 class HMM:
@@ -297,14 +319,24 @@ class HMM:
         return [self.etiquetas[j] for j in camino], logprob
 
     def etiquetas_unk(
-        self, palabras: list[str], posiciones: list[int], permitidas: set[str] | None = None
+        self,
+        palabras: list[str],
+        posiciones: list[int],
+        permitidas: set[str] | dict[int, set[str]] | None = None,
     ) -> dict[int, str]:
         """Etiqueta propuesta para cada posición pedida, en el formato de `ParserCYK.analizar(etiquetas_unk=...)`.
 
         Se decodifica la **oración completa** con Viterbi (AIMA §24.1.6, p. 881): el contexto de las palabras
-        conocidas es lo que permite acertar la etiqueta de la desconocida. Si se da `permitidas` (p. ej. los
-        preterminales de la PCFG), en las posiciones pedidas las demás etiquetas se excluyen (-inf) antes de
-        decodificar, para que el CYK nunca reciba una categoría sin reglas.
+        conocidas es lo que permite acertar la etiqueta de la desconocida. `permitidas` restringe la etiqueta
+        en las posiciones pedidas (las demás etiquetas reciben -inf antes de decodificar), para que el CYK
+        nunca reciba una categoría sin reglas adecuadas:
+        - un conjunto se aplica a todas las posiciones pedidas (p. ej. `preterminales_de_palabra(pcfg)`);
+        - un dict {posición: conjunto} restringe cada posición por separado; las posiciones pedidas que no
+          estén en el dict quedan sin restricción.
+        Las etiquetas permitidas que el modelo no conoce se ignoran.
+
+        ValueError si una posición está fuera de rango, si el dict trae posiciones que no están en
+        `posiciones`, o si en alguna posición no queda ninguna etiqueta del modelo permitida.
         """
         self._exigir_entrenado()
         n = len(palabras)
@@ -312,10 +344,16 @@ class HMM:
         if fuera:
             raise ValueError(f"posiciones fuera de rango para {n} palabras: {fuera}")
         restricciones: dict[int, set[str]] = {}
-        if permitidas is not None:
-            if not set(permitidas) & set(self.etiquetas):
-                raise ValueError("ninguna etiqueta del modelo está entre las permitidas")
+        if isinstance(permitidas, dict):
+            sobrantes = sorted(set(permitidas) - set(posiciones))
+            if sobrantes:
+                raise ValueError(f"`permitidas` trae posiciones que no se pidieron: {sobrantes}")
+            restricciones = {p: set(conjunto) for p, conjunto in permitidas.items()}
+        elif permitidas is not None:
             restricciones = {p: set(permitidas) for p in posiciones}
+        for p, conjunto in restricciones.items():
+            if not conjunto & set(self.etiquetas):
+                raise ValueError(f"posición {p}: ninguna etiqueta del modelo está entre las permitidas")
         etiquetas, _ = self._decodificar(palabras, restricciones)
         return {p: etiquetas[p] for p in posiciones}
 
@@ -380,4 +418,4 @@ class HMM:
         return modelo
 
 
-__all__ = ["HMM", "firma", "SUFIJOS", "TERMINALES_ESPECIALES", "FIRMA_DESCONOCIDA", "FIRMA_DIGITO"]
+__all__ = ["HMM", "firma", "preterminales_de_palabra", "SUFIJOS", "TERMINALES_ESPECIALES", "FIRMA_DESCONOCIDA", "FIRMA_DIGITO"]

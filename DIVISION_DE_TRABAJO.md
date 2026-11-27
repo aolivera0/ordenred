@@ -194,13 +194,15 @@ class Corrector:
 class Clasificador(Protocol):
     def entrenar(self, X: list[list[str]], y: list[str]) -> None
     def predecir(self, tokens: list[str]) -> tuple[str, dict[str, float]]    # (clase, P(clase | tokens))
-class NaiveBayes(Clasificador): ...
-class RegresionLogistica(Clasificador): ...
-
-# NaiveBayes, RegresionLogistica y HMM (agregado en el PR del rol 4):
-def guardar(self, ruta: str) -> None                             # JSON con "tipo" y "version"
-@classmethod
-def cargar(cls, ruta: str) -> "Self"
+class NaiveBayes(Clasificador):
+    # guardar/cargar (agregado en el PR del rol 4), igual en RegresionLogistica y HMM:
+    def guardar(self, ruta: str) -> None                         # JSON con "tipo" y "version"
+    @classmethod
+    def cargar(cls, ruta: str) -> "NaiveBayes"
+class RegresionLogistica(Clasificador):
+    def guardar(self, ruta: str) -> None
+    @classmethod
+    def cargar(cls, ruta: str) -> "RegresionLogistica"
 
 # hmm.py (rol 4)
 class HMM:
@@ -208,7 +210,11 @@ class HMM:
     def viterbi(self, palabras: list[str]) -> tuple[list[str], float]
     # agregado en el PR del rol 4: lo que el pipeline le pasa al CYK como etiquetas_unk
     def etiquetas_unk(self, palabras: list[str], posiciones: list[int],
-                      permitidas: set[str] | None = None) -> dict[int, str]
+                      permitidas: set[str] | dict[int, set[str]] | None = None) -> dict[int, str]
+    def guardar(self, ruta: str) -> None
+    @classmethod
+    def cargar(cls, ruta: str) -> "HMM"
+def preterminales_de_palabra(pcfg: PCFG) -> set[str]   # preterminales con alguna regla léxica hacia una palabra
 
 # pcfg.py y cyk.py (rol 1)
 class PCFG:
@@ -253,7 +259,13 @@ def a_acl_cisco(fls: list[FormaLogica], numero: int = 101) -> list[str]
   (`PCFG.indice_lexico`). El HMM etiqueta la **oración completa** (el contexto de las palabras conocidas es lo
   que permite acertar) y `HMM.etiquetas_unk` devuelve solo esas posiciones, en el formato de
   `ParserCYK.analizar(..., etiquetas_unk=...)`. `permitidas` restringe la etiqueta a preterminales que existen
-  en la gramática, para que el CYK nunca reciba una categoría sin reglas.
+  en la gramática, para que el CYK nunca reciba una categoría sin reglas: un conjunto vale para todas las
+  posiciones pedidas y un dict `{posición: conjunto}` restringe cada una por separado. Para los tokens de tipo
+  PALABRA el pipeline debe pasar solo `preterminales_de_palabra(pcfg)`, es decir, los preterminales con al menos
+  una regla léxica hacia una palabra: así una palabra desconocida («servidor») nunca recibe una categoría que
+  en la gramática solo produce terminales especiales (`DIR -> "<IP>" | "<CIDR>"`). `etiquetas_unk` lanza
+  `ValueError` si una posición está fuera de rango, si el dict trae posiciones que no se pidieron o si en
+  alguna posición `permitidas` no tiene ninguna etiqueta en común con el modelo.
 - **Nota para el rol 1.** Hoy el CYK le asigna log P = 0 a la etiqueta del HMM en esa posición, así que solo
   cuenta cuál etiqueta se eligió, no con qué confianza. No bloquea; se deja anotado para E3/E4.
 
