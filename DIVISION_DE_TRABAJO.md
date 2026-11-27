@@ -196,11 +196,18 @@ class Clasificador(Protocol):
     def predecir(self, tokens: list[str]) -> tuple[str, dict[str, float]]    # (clase, P(clase | tokens))
 class NaiveBayes(Clasificador): ...
 class RegresionLogistica(Clasificador): ...
+    # guardar/cargar (agregado en el PR del rol 4) en NaiveBayes, RegresionLogistica y HMM:
+    def guardar(self, ruta: str) -> None                         # JSON con "tipo" y "version"
+    @classmethod
+    def cargar(cls, ruta: str) -> "NaiveBayes"                   # idem RegresionLogistica / HMM
 
 # hmm.py (rol 4)
 class HMM:
     def entrenar(self, oraciones: list[list[tuple[str, str]]]) -> None    # [(palabra, etiqueta)]
     def viterbi(self, palabras: list[str]) -> tuple[list[str], float]
+    # agregado en el PR del rol 4: lo que el pipeline le pasa al CYK como etiquetas_unk
+    def etiquetas_unk(self, palabras: list[str], posiciones: list[int],
+                      permitidas: set[str] | None = None) -> dict[int, str]
 
 # pcfg.py y cyk.py (rol 1)
 class PCFG:
@@ -231,6 +238,23 @@ class Interprete:
 def a_iptables(fls: list[FormaLogica]) -> list[str]
 def a_acl_cisco(fls: list[FormaLogica], numero: int = 101) -> list[str]
 ```
+
+**Acuerdos de los modelos del rol 4 (agregados en el PR del rol 4; compatibles con lo anterior):**
+
+- **Entrada.** `Clasificador.entrenar/predecir` y `HMM.entrenar/viterbi` reciben los **terminales**
+  (`Token.terminal`: `"<CIDR>"`, `"<IP>"`, `"<NUM>"`…), no la forma escrita (`"10.0.0.0/8"`). Así una IP nueva
+  no es una palabra desconocida y los modelos generalizan. En el corpus (C5) `tokens` trae formas: quien
+  entrena convierte con `tokenizar`.
+- **Persistencia.** `guardar(ruta)` / `cargar(ruta)` en JSON (`"tipo"`, `"version"`). Naive Bayes y el HMM
+  guardan conteos enteros y recalculan los logaritmos al cargar (ida y vuelta exacta); la regresión logística
+  guarda sus pesos. Los modelos entrenados van en `modelos/` (no se versiona); lo usa `cli entrenar` (rol 6).
+- **Palabras `<UNK>`.** El pipeline (rol 6) decide qué posiciones están fuera del léxico de la PCFG
+  (`PCFG.indice_lexico`). El HMM etiqueta la **oración completa** (el contexto de las palabras conocidas es lo
+  que permite acertar) y `HMM.etiquetas_unk` devuelve solo esas posiciones, en el formato de
+  `ParserCYK.analizar(..., etiquetas_unk=...)`. `permitidas` restringe la etiqueta a preterminales que existen
+  en la gramática, para que el CYK nunca reciba una categoría sin reglas.
+- **Nota para el rol 1.** Hoy el CYK le asigna log P = 0 a la etiqueta del HMM en esa posición, así que solo
+  cuenta cuál etiqueta se eligió, no con qué confianza. No bloquea; se deja anotado para E3/E4.
 
 ### C7 · Resultado del pipeline (`pipeline.py`, dueño: rol 6)
 
