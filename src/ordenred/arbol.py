@@ -1,11 +1,14 @@
-"""Árbol sintáctico (contrato C3). Dueño: rol 1.
+"""
+Árbol sintáctico (contrato C3). Dueño: rol 1 (Sergio Nicolás Siabatto Cleves).
 
 Formato entre corchetes, el mismo del corpus (C5):
     (S (SV (VACC bloquea) (SN (DET el) (NUC (SERV ssh)))))
 
 Un nodo preterminal tiene `token` y no tiene hijos; un nodo interno tiene hijos y `token is None`.
 En el texto entre corchetes, la hoja de un preterminal se escribe con la `forma` del token.
+Referencia: Russell & Norvig, AIMA 4ta Ed., Cap. 24 (Lenguaje Natural).
 """
+
 from __future__ import annotations
 
 import re
@@ -30,15 +33,43 @@ class Arbol:
     def __str__(self) -> str:
         return a_corchetes(self)
 
+    def __repr__(self) -> str:
+        return f"Arbol({a_corchetes(self)}, logprob={self.logprob:.4f})"
+
+    def __eq__(self, otro: object) -> bool:
+        if not isinstance(otro, Arbol):
+            return False
+        return (
+            self.etiqueta == otro.etiqueta
+            and self.hijos == otro.hijos
+            and (self.token == otro.token if self.es_preterminal else otro.token is None)
+            and abs(self.logprob - otro.logprob) < 1e-6
+        )
+
+    def __lt__(self, otro: object) -> bool:
+        """
+        Soporte para colas de prioridad (heapq) y desempates en algoritmos de k-mejores árboles.
+        Compara primero por logprob (mayor probabilidad primero) y luego por serialización canónica.
+        """
+        if not isinstance(otro, Arbol):
+            return NotImplemented
+        if abs(self.logprob - otro.logprob) > 1e-9:
+            return self.logprob < otro.logprob
+        return a_corchetes(self) < a_corchetes(otro)
+
 
 def a_corchetes(a: Arbol) -> str:
-    """Serializa el árbol en el formato de corchetes."""
+    """Serializa el árbol en el formato canónico de corchetes."""
     if a.es_preterminal:
         if a.hijos:
             raise ValueError(f"el preterminal {a.etiqueta} no puede tener hijos")
+        if a.token is None:
+            raise ValueError(f"el preterminal {a.etiqueta} debe tener token")
         return f"({a.etiqueta} {a.token.forma})"
+
     if not a.hijos:
         raise ValueError(f"el nodo interno {a.etiqueta} no tiene hijos ni token")
+
     return f"({a.etiqueta} " + " ".join(a_corchetes(h) for h in a.hijos) + ")"
 
 
@@ -52,27 +83,34 @@ def desde_corchetes(s: str, tokens: list[Token] | None = None) -> Arbol:
     piezas = _PIEZAS.findall(s)
     if not piezas:
         raise ValueError("cadena vacía")
-    hojas: list[str] = []
+
+    hojas_recolectadas: list[str] = []
 
     def nodo(i: int) -> tuple[Arbol, int]:
         if piezas[i] != "(":
             raise ValueError(f"se esperaba '(' en la posición {i}: {piezas[i]!r}")
         if i + 1 >= len(piezas) or piezas[i + 1] in "()":
             raise ValueError(f"falta la etiqueta en la posición {i + 1}")
+
         etiqueta = piezas[i + 1]
         i += 2
+
         if i + 1 < len(piezas) and piezas[i] not in "()" and piezas[i + 1] == ")":
-            hojas.append(piezas[i])
-            pos = len(hojas) - 1
+            hojas_recolectadas.append(piezas[i])
+            pos = len(hojas_recolectadas) - 1
             return Arbol(etiqueta, [], token=_token_hoja(piezas[i], pos)), i + 2
+
         hijos = []
         while i < len(piezas) and piezas[i] == "(":
             h, i = nodo(i)
             hijos.append(h)
+
         if not hijos:
             raise ValueError(f"el nodo {etiqueta} no tiene hijos válidos")
+
         if i >= len(piezas) or piezas[i] != ")":
             raise ValueError(f"se esperaba ')' al cerrar {etiqueta}")
+
         return Arbol(etiqueta, hijos), i + 1
 
     def _token_hoja(forma: str, pos: int) -> Token:
@@ -87,8 +125,12 @@ def desde_corchetes(s: str, tokens: list[Token] | None = None) -> Arbol:
     arbol, fin = nodo(0)
     if fin != len(piezas):
         raise ValueError(f"sobra texto después del árbol: {' '.join(piezas[fin:])!r}")
-    if tokens is not None and len(hojas) != len(tokens):
-        raise ValueError(f"el árbol tiene {len(hojas)} hojas y se dieron {len(tokens)} tokens")
+
+    if tokens is not None and len(hojas_recolectadas) != len(tokens):
+        raise ValueError(
+            f"el árbol tiene {len(hojas_recolectadas)} hojas y se dieron {len(tokens)} tokens"
+        )
+
     return arbol
 
 
@@ -102,6 +144,8 @@ def preterminales(a: Arbol) -> list[str]:
 def hojas(a: Arbol) -> list[Token]:
     """Tokens de las hojas de izquierda a derecha."""
     if a.es_preterminal:
+        if a.token is None:
+            raise ValueError(f"el preterminal {a.etiqueta} no tiene token asignado")
         return [a.token]
     return [t for h in a.hijos for t in hojas(h)]
 
@@ -114,6 +158,9 @@ def reglas(a: Arbol) -> list[tuple[str, tuple[str, ...]]]:
     Es lo que cuenta M6 para estimar la PCFG.
     """
     if a.es_preterminal:
+        if a.token is None:
+            raise ValueError(f"el preterminal {a.etiqueta} no tiene token asignado")
         return [(a.etiqueta, (f'"{a.token.terminal}"',))]
+
     propias = [(a.etiqueta, tuple(h.etiqueta for h in a.hijos))]
     return propias + [r for h in a.hijos for r in reglas(h)]
