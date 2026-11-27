@@ -21,6 +21,17 @@ Desde esta carpeta:
 python3 -m unittest -v
 ```
 
+### Con Docker (mismo entorno Linux en cualquier sistema)
+
+Requiere Docker con `docker compose`. La imagen trae Python 3.13 y las versiones exactas de
+`requirements.txt`; el código se monta en vivo, así que solo hay que reconstruir si cambia `requirements.txt`.
+
+```bash
+docker compose build                     # una vez
+docker compose run --rm ordenred         # corre todas las pruebas
+docker compose run --rm ordenred python -m ordenred.cli traducir "bloquea ssh"   # cualquier otro comando
+```
+
 `tests/test_contratos.py` lista en `PENDIENTES` los métodos que aún son *stubs*. Al implementar uno,
 **quítelo de la lista**: la prueba falla si un método implementado sigue listado.
 
