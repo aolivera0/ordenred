@@ -338,8 +338,8 @@ class TestPermitidasRegresion(unittest.TestCase):
                 self.assertEqual(set(propuesta), set(posiciones))
                 self.assertTrue(set(propuesta.values()) <= permitidas, propuesta)
 
-    def test_caso_del_verificador(self):
-        # Antes, con α = 0, todos los caminos tenían prob. 0 y salía {0: "A", 1: "A"}; ahora α > 0.
+    def test_permitidas_excluye_la_etiqueta_mas_probable(self):
+        # Con α > 0 hay un camino válido aunque la única etiqueta permitida sea la menos probable.
         h = entrenado([[("a", "A"), ("b", "B")], [("a", "D")]], alfa_trans=1e-9)
         self.assertEqual(h.etiquetas_unk(["a", "b"], [0, 1], {"D"}), {0: "D", 1: "D"})
 
@@ -465,13 +465,25 @@ class TestPersistencia(unittest.TestCase):
             with self.assertRaises(ValueError):
                 HMM.cargar(ruta)
 
+    def test_cargar_json_mal_formado_da_value_error(self):
+        with tempfile.TemporaryDirectory() as d:
+            ruta = Path(d) / "hmm.json"
+            entrenado(CORPUS_3).guardar(ruta)
+            completo = json.loads(ruta.read_text(encoding="utf-8"))
+            sin_campo = {k: v for k, v in completo.items() if k != "conteo_emision"}
+            conteos_rotos = dict(completo, conteo_trans=[1, 2, 3])
+            for contenido in ([1, 2, 3], "HMM", None, {"tipo": "HMM", "version": 1}, sin_campo, conteos_rotos):
+                ruta.write_text(json.dumps(contenido), encoding="utf-8")
+                with self.subTest(contenido=str(contenido)[:40]), self.assertRaises(ValueError):
+                    HMM.cargar(ruta)
+
     def test_guardar_sin_entrenar(self):
         with tempfile.TemporaryDirectory() as d, self.assertRaises(RuntimeError):
             HMM().guardar(Path(d) / "hmm.json")
 
 
 class TestIntegracionConCYK(unittest.TestCase):
-    """F5: el HMM propone la etiqueta de una palabra fuera del léxico de la PCFG y el CYK la usa."""
+    """Integración: el HMM propone la etiqueta de una palabra fuera del léxico de la PCFG y el CYK la usa."""
 
     def test_palabra_fuera_del_lexico(self):
         corpus = cargar_jsonl(FIXTURES / "mini_corpus.jsonl")

@@ -359,6 +359,23 @@ class TestRegresionLogistica(Temporal):
         with self.assertRaises(ValueError):
             RegresionLogistica.cargar(self.ruta)
 
+    def test_cargar_rechaza_w_nulo_con_varias_clases(self):
+        rl = RegresionLogistica(epocas=5)
+        rl.entrenar(X_SEPARABLE, Y_SEPARABLE)
+        rl.guardar(self.ruta)
+        datos = json.loads(self.ruta.read_text(encoding="utf-8"))
+        self.assertGreater(len(datos["clases"]), 1)
+        datos["W"] = None
+        self.ruta.write_text(json.dumps(datos), encoding="utf-8")
+        with self.assertRaises(ValueError):
+            RegresionLogistica.cargar(self.ruta)
+
+    def test_cargar_json_mal_formado_da_value_error(self):
+        for contenido in ([1, 2], {"tipo": "RegresionLogistica", "version": 1}):
+            self.ruta.write_text(json.dumps(contenido), encoding="utf-8")
+            with self.subTest(contenido=contenido), self.assertRaises(ValueError):
+                RegresionLogistica.cargar(self.ruta)
+
 
 class TestMiniCorpus(unittest.TestCase):
     def test_ambos_aciertan_todo_el_entrenamiento(self):

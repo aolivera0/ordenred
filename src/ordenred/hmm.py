@@ -35,10 +35,11 @@ Decisiones de diseño
 """
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import numpy as np
+
+from ._persistencia import VERSION, escribir_json, leer_json
 
 TERMINALES_ESPECIALES = frozenset({"<IP>", "<CIDR>", "<NUM>", "<RANGO>", "<IFAZ>"})
 FIRMA_DESCONOCIDA = "<UNK>"
@@ -46,9 +47,6 @@ FIRMA_DIGITO = "<UNK-DIG>"
 # Sufijos del español que delatan la categoría (verbos, sustantivos, adverbios, plurales...).
 SUFIJOS = ("ciones", "cion", "mente", "ando", "iendo", "ar", "er", "ir", "as", "os", "es", "s", "a", "e", "o")
 _SUFIJOS_POR_LONGITUD = tuple(sorted(SUFIJOS, key=len, reverse=True))  # sort estable: el más largo primero
-
-TIPO_ARCHIVO = "HMM"
-VERSION_ARCHIVO = 1
 
 
 def firma(palabra: str) -> str:
@@ -74,6 +72,13 @@ class HMM:
     usar_fin: si True, se modela la transición a un estado FIN tras la última palabra.
     """
 
+    TIPO = "HMM"
+    # Campos que debe traer el JSON de `guardar`, además de "tipo" y "version".
+    CAMPOS = (
+        "alfa_trans", "alfa_emis", "umbral_raras", "usar_fin", "etiquetas", "n_oraciones", "conteo_inicio",
+        "conteo_trans", "conteo_fin", "conteo_etiqueta", "conteo_emision", "conocidas", "firmas",
+    )
+
     def __init__(
         self,
         alfa_trans: float = 1.0,
@@ -89,7 +94,7 @@ class HMM:
         self.alfa_emis = float(alfa_emis)
         self.umbral_raras = int(umbral_raras)
         self.usar_fin = bool(usar_fin)
-        self.entrenado = False
+        self._entrenado = False
         # Tabla δ y punteros ψ de la última decodificación (para inspección y la sustentación).
         self.delta: np.ndarray | None = None
         self.psi: np.ndarray | None = None
@@ -185,7 +190,7 @@ class HMM:
             for w, c in conteos.items():
                 emision[self.indice_etiqueta[t], self.indice_obs[w]] = c
         self.log_B = np.log((emision + a_e) / (por_etiqueta + a_e * len(self.vocabulario))[:, None])
-        self.entrenado = True
+        self._entrenado = True
 
     # ------------------------------------------------------------------ observaciones
 
@@ -315,7 +320,7 @@ class HMM:
         return {p: etiquetas[p] for p in posiciones}
 
     def _exigir_entrenado(self) -> None:
-        if not self.entrenado:
+        if not self._entrenado:
             raise RuntimeError("el HMM no está entrenado: llame primero a entrenar() o use HMM.cargar()")
 
     # ------------------------------------------------------------------ persistencia (C6)
@@ -324,8 +329,8 @@ class HMM:
         """JSON UTF-8 con hiperparámetros y conteos enteros (las tablas de log se recalculan al cargar)."""
         self._exigir_entrenado()
         datos = {
-            "tipo": TIPO_ARCHIVO,
-            "version": VERSION_ARCHIVO,
+            "tipo": self.TIPO,
+            "version": VERSION,
             "alfa_trans": self.alfa_trans,
             "alfa_emis": self.alfa_emis,
             "umbral_raras": self.umbral_raras,
@@ -340,36 +345,38 @@ class HMM:
             "conocidas": sorted(self.conocidas),
             "firmas": sorted(self.firmas),
         }
-        ruta_p = Path(ruta)
-        ruta_p.parent.mkdir(parents=True, exist_ok=True)
-        with open(ruta_p, "w", encoding="utf-8") as f:
-            json.dump(datos, f, ensure_ascii=False, indent=1, allow_nan=False)
+        escribir_json(ruta, datos)
 
     @classmethod
     def cargar(cls, ruta: str | Path) -> HMM:
-        """Lee un HMM guardado con `guardar`; valida "tipo" y "version" y recalcula las tablas."""
-        with open(ruta, encoding="utf-8") as f:
-            datos = json.load(f)
-        if datos.get("tipo") != TIPO_ARCHIVO:
-            raise ValueError(f"el archivo no es un HMM (tipo = {datos.get('tipo')!r})")
-        if datos.get("version") != VERSION_ARCHIVO:
-            raise ValueError(f"versión de HMM no soportada: {datos.get('version')!r}")
-        modelo = cls(
-            alfa_trans=datos["alfa_trans"],
-            alfa_emis=datos["alfa_emis"],
-            umbral_raras=datos["umbral_raras"],
-            usar_fin=datos["usar_fin"],
-        )
-        modelo.etiquetas = list(datos["etiquetas"])
-        modelo.n_oraciones = int(datos["n_oraciones"])
-        modelo.conteo_inicio = {t: int(c) for t, c in datos["conteo_inicio"].items()}
-        modelo.conteo_trans = {i: {j: int(c) for j, c in fila.items()} for i, fila in datos["conteo_trans"].items()}
-        modelo.conteo_fin = {t: int(c) for t, c in datos["conteo_fin"].items()}
-        modelo.conteo_etiqueta = {t: int(c) for t, c in datos["conteo_etiqueta"].items()}
-        modelo.conteo_emision = {t: {w: int(c) for w, c in fila.items()} for t, fila in datos["conteo_emision"].items()}
-        modelo.conocidas = set(datos["conocidas"])
-        modelo.firmas = set(datos["firmas"])
-        modelo._calcular_tablas()
+        """Lee un HMM guardado con `guardar`; valida "tipo", "version" y los campos, y recalcula las tablas.
+
+        ValueError si el JSON no es un objeto, le faltan campos o los conteos no tienen la forma esperada.
+        """
+        datos = leer_json(ruta, cls.TIPO, cls.CAMPOS)
+        try:
+            modelo = cls(
+                alfa_trans=datos["alfa_trans"],
+                alfa_emis=datos["alfa_emis"],
+                umbral_raras=datos["umbral_raras"],
+                usar_fin=datos["usar_fin"],
+            )
+            modelo.etiquetas = list(datos["etiquetas"])
+            modelo.n_oraciones = int(datos["n_oraciones"])
+            modelo.conteo_inicio = {t: int(c) for t, c in datos["conteo_inicio"].items()}
+            modelo.conteo_trans = {
+                i: {j: int(c) for j, c in fila.items()} for i, fila in datos["conteo_trans"].items()
+            }
+            modelo.conteo_fin = {t: int(c) for t, c in datos["conteo_fin"].items()}
+            modelo.conteo_etiqueta = {t: int(c) for t, c in datos["conteo_etiqueta"].items()}
+            modelo.conteo_emision = {
+                t: {w: int(c) for w, c in fila.items()} for t, fila in datos["conteo_emision"].items()
+            }
+            modelo.conocidas = set(datos["conocidas"])
+            modelo.firmas = set(datos["firmas"])
+            modelo._calcular_tablas()
+        except (AttributeError, KeyError, TypeError, ValueError) as e:
+            raise ValueError(f"el archivo del HMM está mal formado: {e!r}") from None
         return modelo
 
 

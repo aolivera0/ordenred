@@ -31,8 +31,8 @@ Cómo correrlo (desde la raíz del repositorio)
 
 Sin Docker hace falta `PYTHONPATH=src`. Escribe `e4_curvas.csv`, `e4_hmm_unk.csv` y `e4_confusion.csv` en
 `--salida` (por omisión `experimentos/resultados/`). No dibuja figuras: las hace el rol 7 con estos CSV.
-`correr(semilla, rutas, modo)` devuelve filas planas con la columna "tabla", lista para
-`runner.correr("E4", semillas)`.
+`correr(semilla, rutas)` (con `modo="tokenizar"` por omisión) devuelve filas planas con la columna
+"tabla", lista para `runner.correr("E4", semillas)`.
 
 Entrada de los modelos: los **terminales** (`Token.terminal`), según los acuerdos del rol 4 en C6. En modo
 "tokenizar" salen de `tokenizador.tokenizar` (rol 5); en modo "fixtures" de `tests.tokens_fixture`, que
@@ -49,7 +49,7 @@ from pathlib import Path
 
 from ordenred.clasificadores import NaiveBayes, RegresionLogistica
 from ordenred.corpus import cargar_jsonl
-from ordenred.hmm import HMM, TERMINALES_ESPECIALES
+from ordenred.hmm import HMM
 from ordenred.semantica import ACCIONES
 
 RAIZ = Path(__file__).resolve().parent.parent
@@ -206,8 +206,11 @@ def matriz_confusion(reales: list[str], predichas: list[str], clases=ACCIONES) -
 
 
 def _es_palabra(terminal: str) -> bool:
-    """True para terminales de tipo PALABRA ("bloquea"); False para "<IP>", "<CIDR>", "<NUM>"…"""
-    return terminal not in TERMINALES_ESPECIALES and not (terminal.startswith("<") and terminal.endswith(">"))
+    """True para terminales de tipo PALABRA ("bloquea"); False para "<IP>", "<CIDR>", "<NUM>"…
+
+    Todos los terminales especiales (`hmm.TERMINALES_ESPECIALES`) tienen la forma "<…>".
+    """
+    return not (terminal.startswith("<") and terminal.endswith(">"))
 
 
 def retener_vocabulario(
@@ -418,7 +421,7 @@ def exactitud_hmm(hmm: HMM, evaluacion: list[dict], modo: str, retenidas=frozens
 def correr(
     semilla: int,
     rutas: dict,
-    modo: str,
+    modo: str = "tokenizar",
     fracciones=FRACCIONES,
     proporcion_retenida: float = PROPORCION_RETENIDA,
 ) -> list[dict]:

@@ -14,14 +14,14 @@ Todas las probabilidades se manejan en logaritmo y se normalizan al final con lo
 """
 from __future__ import annotations
 
-import json
 import math
 from pathlib import Path
 from typing import Protocol
 
 import numpy as np
 
-VERSION = 1
+from ._persistencia import VERSION, escribir_json, leer_json
+
 # Diferencia mínima entre log-puntajes para no considerarlos empatados (ver _argmax_determinista).
 TOLERANCIA_EMPATE = 1e-9
 
@@ -78,25 +78,6 @@ def _validar_datos(X: list[list[str]], y: list[str]) -> None:
         raise ValueError("no hay documentos de entrenamiento")
     if len(X) != len(y):
         raise ValueError(f"X tiene {len(X)} documentos pero y tiene {len(y)} etiquetas")
-
-
-def _leer_json(ruta: str | Path, tipo: str) -> dict:
-    with open(ruta, encoding="utf-8") as f:
-        datos = json.load(f)
-    if not isinstance(datos, dict) or datos.get("tipo") != tipo:
-        recibido = datos.get("tipo") if isinstance(datos, dict) else None
-        raise ValueError(f"el archivo no es un modelo {tipo} (tipo={recibido!r})")
-    if datos.get("version") != VERSION:
-        raise ValueError(f"versión no soportada: {datos.get('version')!r}; se esperaba {VERSION}")
-    return datos
-
-
-def _escribir_json(ruta: str | Path, datos: dict) -> None:
-    ruta = Path(ruta)
-    ruta.parent.mkdir(parents=True, exist_ok=True)
-    # allow_nan=False: el JSON nunca lleva Infinity ni NaN (falla en vez de escribir algo ilegible).
-    texto = json.dumps(datos, ensure_ascii=False, indent=1, allow_nan=False)
-    ruta.write_text(texto + "\n", encoding="utf-8")
 
 
 # --------------------------------------------------------------------------------------------
@@ -229,7 +210,7 @@ class NaiveBayes:
         """JSON con conteos enteros; los logaritmos se recalculan al cargar (ida y vuelta exacta)."""
         if not self._entrenado:
             raise RuntimeError("NaiveBayes no está entrenado: no hay nada que guardar")
-        _escribir_json(
+        escribir_json(
             ruta,
             {
                 "tipo": self.TIPO,
@@ -243,7 +224,7 @@ class NaiveBayes:
 
     @classmethod
     def cargar(cls, ruta: str | Path) -> "NaiveBayes":
-        datos = _leer_json(ruta, cls.TIPO)
+        datos = leer_json(ruta, cls.TIPO, ("alfa", "docs_por_clase", "conteo_palabras"))
         modelo = cls(alfa=datos["alfa"])
         docs = {c: int(n) for c, n in datos["docs_por_clase"].items()}
         conteo = {c: {w: int(k) for w, k in fila.items()} for c, fila in datos["conteo_palabras"].items()}
@@ -370,7 +351,7 @@ class RegresionLogistica:
         """JSON con hiperparámetros, vocabulario, clases y W (listas de floats, ida y vuelta exacta)."""
         if not self._entrenado:
             raise RuntimeError("RegresionLogistica no está entrenada: no hay nada que guardar")
-        _escribir_json(
+        escribir_json(
             ruta,
             {
                 "tipo": self.TIPO,
@@ -388,12 +369,14 @@ class RegresionLogistica:
 
     @classmethod
     def cargar(cls, ruta: str | Path) -> "RegresionLogistica":
-        datos = _leer_json(ruta, cls.TIPO)
+        datos = leer_json(ruta, cls.TIPO, ("tasa", "epocas", "l2", "semilla", "clases", "vocabulario", "W"))
         modelo = cls(tasa=datos["tasa"], epocas=datos["epocas"], l2=datos["l2"], semilla=datos["semilla"])
         modelo.clases = list(datos["clases"])
         modelo._fijar_vocabulario(list(datos["vocabulario"]))
         modelo.W = None if datos["W"] is None else np.array(datos["W"], dtype=float)
         modelo.historial_perdida = [float(v) for v in datos.get("historial_perdida", [])]
+        if modelo.W is None and len(modelo.clases) > 1:
+            raise ValueError("W es null pero hay más de una clase: el modelo no tiene pesos")
         if modelo.W is not None and modelo.W.shape != (len(modelo.vocabulario) + 1, len(modelo.clases)):
             raise ValueError(f"W tiene forma {modelo.W.shape}, incompatible con vocabulario y clases")
         modelo._entrenado = True

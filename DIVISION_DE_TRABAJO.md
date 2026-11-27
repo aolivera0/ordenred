@@ -196,10 +196,11 @@ class Clasificador(Protocol):
     def predecir(self, tokens: list[str]) -> tuple[str, dict[str, float]]    # (clase, P(clase | tokens))
 class NaiveBayes(Clasificador): ...
 class RegresionLogistica(Clasificador): ...
-    # guardar/cargar (agregado en el PR del rol 4) en NaiveBayes, RegresionLogistica y HMM:
-    def guardar(self, ruta: str) -> None                         # JSON con "tipo" y "version"
-    @classmethod
-    def cargar(cls, ruta: str) -> "NaiveBayes"                   # idem RegresionLogistica / HMM
+
+# NaiveBayes, RegresionLogistica y HMM (agregado en el PR del rol 4):
+def guardar(self, ruta: str) -> None                             # JSON con "tipo" y "version"
+@classmethod
+def cargar(cls, ruta: str) -> "Self"
 
 # hmm.py (rol 4)
 class HMM:

@@ -1,6 +1,6 @@
 # docker compose build                  → construye la imagen (solo cuando cambia requirements.txt)
 # docker compose run --rm ordenred      → corre todas las pruebas
-# docker compose run --rm ordenred python experimentos/runner.py E4   → cualquier otro comando
+# docker compose run --rm ordenred python experimentos/e4_clasificacion_etiquetado.py --fixtures --salida /tmp/e4   → cualquier otro comando
 services:
   ordenred:
     build: .
