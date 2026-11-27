@@ -210,7 +210,10 @@ class PCFG:
     def guardar(self, ruta: str) -> None
 class ParserCYK:
     def __init__(self, pcfg: PCFG)
-    def analizar(self, terminales: list[str], k: int = 1, etiquetas_unk: dict[int, str] | None = None) -> list[Arbol]   # k mejores, ordenados
+    def analizar(self, terminales: list[str], k: int = 1, etiquetas_unk: dict[int, str] | None = None,
+                 tokens: list[Token] | None = None) -> list[Arbol]   # k mejores, ordenados
+    # tokens (agregado en el PR #1): si se pasan, las hojas llevan el token real (IP, puerto…), que es
+    # lo que necesitan el intérprete (rol 2) y la comparación con el árbol de oro (E1). El pipeline debe pasarlos.
 
 # objetos.py (rol 2)
 class TablaObjetos:
@@ -311,8 +314,8 @@ Formato de cada rol: **misión → depende de / entrega a → tareas fechadas �
 - [ ] **Mar 24:** revisar el esqueleto con el grupo en H0 y subirlo al repositorio compartido.
 - [ ] **Mié 25–Jue 26:** `gramatica/reglas.pcfg` v1 junto con los roles 2 y 5: unas 60–120 reglas y un léxico de ≈ 150 palabras, que incluya las ambigüedades de la §2.
 - [ ] **Mié 25–Vie 27:** `pcfg.py`: lectura y validación del archivo (que las reglas de cada no terminal sumen 1 y que estén en el formato permitido), `guardar`.
-- [ ] **Jue 26–Sáb 28:** `cyk.py`: CYK probabilístico (AIMA fig. 24.5) en log-probabilidades con tabla NumPy `[n+1, n+1, |N|]` y punteros de retroceso; clausura unaria; reconstrucción del árbol.
-- [ ] **Sáb 28–Dom 29:** *k* mejores árboles (*k*-best por celda, *k* ≤ 5); uso de `etiquetas_unk` del HMM para posiciones `<UNK>`.
+- [x] **Jue 26–Sáb 28:** `cyk.py`: CYK probabilístico (AIMA fig. 24.5) en log-probabilidades y punteros de retroceso; clausura unaria; reconstrucción del árbol. *(PR #1. Se implementó con diccionarios, no con tabla NumPy: decidir si se cambia o si NumPy se justifica con otros módulos.)*
+- [x] **Sáb 28–Dom 29:** *k* mejores árboles (*k*-best por celda, *k* ≤ 5); uso de `etiquetas_unk` del HMM para posiciones `<UNK>`.
 - [ ] **Dom 29–Lun 30:** M6, estimación de máxima verosimilitud de la PCFG por conteo sobre `train.jsonl` (AIMA §24.3.2), con suavizado aditivo opcional; comparación de la verosimilitud en `dev`.
 - [ ] **Lun 30–Mar 1:** apoyo al rol 7 con el código específico de **E3** (PCFG aprendida vs. uniforme; rango de la interpretación correcta) y **E5** (tiempo vs. longitud y tamaño de la gramática).
 - [ ] **Mié 2:** corrección de errores de integración; congelamiento.

@@ -37,6 +37,11 @@ class Arbol:
         return f"Arbol({a_corchetes(self)}, logprob={self.logprob:.4f})"
 
     def __eq__(self, otro: object) -> bool:
+        """Igualdad estructural que TAMBIÉN compara logprob (tolerancia 1e-6).
+
+        Un árbol del CYK (con logprob) no es == al mismo árbol leído del corpus (logprob 0).
+        Para comparar solo la estructura use `a_corchetes(a) == a_corchetes(b)`.
+        """
         if not isinstance(otro, Arbol):
             return False
         return (
@@ -48,8 +53,8 @@ class Arbol:
 
     def __lt__(self, otro: object) -> bool:
         """
-        Soporte para colas de prioridad (heapq) y desempates en algoritmos de k-mejores árboles.
-        Compara primero por logprob (mayor probabilidad primero) y luego por serialización canónica.
+        Orden por logprob ascendente (el MENOS probable es el «menor»); empates por serialización.
+        `sorted(arboles, reverse=True)` deja primero el más probable.
         """
         if not isinstance(otro, Arbol):
             return NotImplemented
