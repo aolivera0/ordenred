@@ -194,13 +194,27 @@ class Corrector:
 class Clasificador(Protocol):
     def entrenar(self, X: list[list[str]], y: list[str]) -> None
     def predecir(self, tokens: list[str]) -> tuple[str, dict[str, float]]    # (clase, P(clase | tokens))
-class NaiveBayes(Clasificador): ...
-class RegresionLogistica(Clasificador): ...
+class NaiveBayes(Clasificador):
+    # guardar/cargar (agregado en el PR del rol 4), igual en RegresionLogistica y HMM:
+    def guardar(self, ruta: str) -> None                         # JSON con "tipo" y "version"
+    @classmethod
+    def cargar(cls, ruta: str) -> "NaiveBayes"
+class RegresionLogistica(Clasificador):
+    def guardar(self, ruta: str) -> None
+    @classmethod
+    def cargar(cls, ruta: str) -> "RegresionLogistica"
 
 # hmm.py (rol 4)
 class HMM:
     def entrenar(self, oraciones: list[list[tuple[str, str]]]) -> None    # [(palabra, etiqueta)]
     def viterbi(self, palabras: list[str]) -> tuple[list[str], float]
+    # agregado en el PR del rol 4: lo que el pipeline le pasa al CYK como etiquetas_unk
+    def etiquetas_unk(self, palabras: list[str], posiciones: list[int],
+                      permitidas: set[str] | dict[int, set[str]] | None = None) -> dict[int, str]
+    def guardar(self, ruta: str) -> None
+    @classmethod
+    def cargar(cls, ruta: str) -> "HMM"
+def preterminales_de_palabra(pcfg: PCFG) -> set[str]   # preterminales con alguna regla léxica hacia una palabra
 
 # pcfg.py y cyk.py (rol 1)
 class PCFG:
@@ -231,6 +245,31 @@ class Interprete:
 def a_iptables(fls: list[FormaLogica]) -> list[str]
 def a_acl_cisco(fls: list[FormaLogica], numero: int = 101) -> list[str]
 ```
+
+**Acuerdos de los modelos del rol 4 (agregados en el PR del rol 4; compatibles con lo anterior):**
+
+- **Entrada.** `Clasificador.entrenar/predecir` y `HMM.entrenar/viterbi` reciben los **terminales**
+  (`Token.terminal`: `"<CIDR>"`, `"<IP>"`, `"<NUM>"`…), no la forma escrita (`"10.0.0.0/8"`). Así una IP nueva
+  no es una palabra desconocida y los modelos generalizan. En el corpus (C5) `tokens` trae formas: quien
+  entrena convierte con `tokenizar`.
+- **Persistencia.** `guardar(ruta)` / `cargar(ruta)` en JSON (`"tipo"`, `"version"`). Naive Bayes y el HMM
+  guardan conteos enteros y recalculan los logaritmos al cargar (ida y vuelta exacta); la regresión logística
+  guarda sus pesos. Los modelos entrenados van en `modelos/` (no se versiona); lo usa `cli entrenar` (rol 6).
+- **Palabras `<UNK>`.** El pipeline (rol 6) decide qué posiciones están fuera del léxico de la PCFG
+  (`PCFG.indice_lexico`). El HMM etiqueta la **oración completa** (el contexto de las palabras conocidas es lo
+  que permite acertar) y `HMM.etiquetas_unk` devuelve solo esas posiciones, en el formato de
+  `ParserCYK.analizar(..., etiquetas_unk=...)`. `permitidas` restringe la etiqueta a preterminales que existen
+  en la gramática, para que el CYK nunca reciba una categoría sin reglas: un conjunto vale para todas las
+  posiciones pedidas y un dict `{posición: conjunto}` restringe cada una por separado. Para los tokens de tipo
+  PALABRA el pipeline debe pasar solo `preterminales_de_palabra(pcfg)`, es decir, los preterminales con al menos
+  una regla léxica hacia una palabra: así una palabra desconocida («servidor») nunca recibe una categoría que
+  en la gramática solo produce terminales especiales (`DIR -> "<IP>" | "<CIDR>"`). `etiquetas_unk` lanza
+  `ValueError` si una posición está fuera de rango, si el dict trae posiciones que no se pidieron o si en
+  alguna posición `permitidas` no tiene ninguna etiqueta en común con el modelo. Si con la etiqueta propuesta
+  el CYK devuelve `[]` (p. ej. «puerto veinte», donde la gramática exige un número), el pipeline lo informa
+  como orden sin análisis en `Resultado.advertencias`: es preferible a producir una regla con una IP falsa.
+- **Nota para el rol 1.** Hoy el CYK le asigna log P = 0 a la etiqueta del HMM en esa posición, así que solo
+  cuenta cuál etiqueta se eligió, no con qué confianza. No bloquea; se deja anotado para E3/E4.
 
 ### C7 · Resultado del pipeline (`pipeline.py`, dueño: rol 6)
 
@@ -394,11 +433,11 @@ ruidoso (≈ 3 págs.; es la parte más ligada a la asignatura); en el manual t�
 - **Entrega a:** rol 6, rol 1 (`etiquetas_unk` para el CYK), rol 7 (E4).
 
 **Tareas**
-- [ ] **Mar 24–Jue 26:** `NaiveBayes` multinomial con bolsa de palabras y suavizado de Laplace, en log-probabilidades (AIMA §24.1.1).
-- [ ] **Jue 26–Sáb 28:** `RegresionLogistica` multiclase (*softmax*) con descenso por gradiente en NumPy, regularización L2 y vectorizador propio (vocabulario → índice); semilla fija (AIMA §24.1.6, discriminativo frente a generativo).
-- [ ] **Vie 27–Dom 29:** `hmm.py`: estimación de transiciones y emisiones por conteo con suavizado; manejo de palabras desconocidas por sufijo o forma; **Viterbi** en log con tabla NumPy y retroceso (AIMA §24.1.6).
-- [ ] **Dom 29–Lun 30:** contrato con el rol 1: para cada posición `<UNK>`, el HMM propone la etiqueta y el CYK la usa como preterminal.
-- [ ] **Lun 30–Mar 1:** código de **E4**: curvas de aprendizaje (10 %, 25 %, 50 %, 100 % de `train`) de NB vs. RL; exactitud del HMM en palabras desconocidas; matriz de confusión de intenciones.
+- [x] **Mar 24–Jue 26:** `NaiveBayes` multinomial con bolsa de palabras y suavizado de Laplace, en log-probabilidades (AIMA §24.1.1). *(PR del rol 4; `tabla_conteos()` para el ejercicio de sustentación.)*
+- [x] **Jue 26–Sáb 28:** `RegresionLogistica` multiclase (*softmax*) con descenso por gradiente en NumPy, regularización L2 y vectorizador propio (vocabulario → índice); semilla fija (AIMA §24.1.6, discriminativo frente a generativo).
+- [x] **Vie 27–Dom 29:** `hmm.py`: estimación de transiciones y emisiones por conteo con suavizado; manejo de palabras desconocidas por sufijo o forma; **Viterbi** en log con tabla NumPy y retroceso (AIMA §24.1.6). *(PR del rol 4; `tabla_viterbi()` para el ejercicio de sustentación.)*
+- [x] **Dom 29–Lun 30:** contrato con el rol 1: para cada posición `<UNK>`, el HMM propone la etiqueta y el CYK la usa como preterminal. *(`HMM.etiquetas_unk`, ver C6; probado contra `ParserCYK` con `mini.pcfg`. Falta que el pipeline del rol 6 lo conecte.)*
+- [x] **Lun 30–Mar 1:** código de **E4**: curvas de aprendizaje (10 %, 25 %, 50 %, 100 % de `train`) de NB vs. RL; exactitud del HMM en palabras desconocidas; matriz de confusión de intenciones. *(`experimentos/e4_clasificacion_etiquetado.py`; corre hoy con `--fixtures`. La corrida real espera `train/dev.jsonl` y `tokenizar` del rol 5.)*
 - [ ] **Mié 2:** integración y congelamiento.
 
 **Terminado cuando:** intención ≥ 95 % en `dev` limpio; Viterbi coincide con la búsqueda exhaustiva en

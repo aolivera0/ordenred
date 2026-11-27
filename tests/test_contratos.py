@@ -37,15 +37,6 @@ PENDIENTES = [
     ("ModeloNGramas.logprob (rol 3)", lambda: LM.logprob(["a"])),
     ("ModeloNGramas.perplejidad (rol 3)", lambda: LM.perplejidad([["a"]])),
     ("Corrector.corregir (rol 3)", lambda: corrector.Corrector(set(), LM, LM).corregir([])),
-    ("NaiveBayes.entrenar (rol 4)", lambda: clasificadores.NaiveBayes().entrenar([], [])),
-    ("NaiveBayes.predecir (rol 4)", lambda: clasificadores.NaiveBayes().predecir([])),
-    (
-        "RegresionLogistica.entrenar (rol 4)",
-        lambda: clasificadores.RegresionLogistica().entrenar([], []),
-    ),
-    ("RegresionLogistica.predecir (rol 4)", lambda: clasificadores.RegresionLogistica().predecir([])),
-    ("HMM.entrenar (rol 4)", lambda: hmm.HMM().entrenar([])),
-    ("HMM.viterbi (rol 4)", lambda: hmm.HMM().viterbi([])),
     # --- ROL 1: IMPLEMENTADO CON ÉXITO POR SERGIO SIABATTO (CONTRATOS EN VERDE) ---
     # ("PCFG.desde_archivo (rol 1)", lambda: pcfg.PCFG.desde_archivo(str(FIXTURES / "mini.pcfg"))),
     # ("PCFG.estimar_desde_treebank (rol 1)", lambda: pcfg.PCFG().estimar_desde_treebank([])),
