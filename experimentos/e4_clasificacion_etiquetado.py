@@ -7,7 +7,7 @@ Qué mide
    entrenados con el 10, 25, 50 y 100 % de `train` y evaluados sobre el conjunto de evaluación
    (`dev` por omisión). Métrica: exactitud de la intención. Las submuestras están anidadas por semilla
    (el 10 % está dentro del 25 %, etc.), lo que reduce la varianza de la curva. La RL se entrena con
-   `--epocas-rl` épocas (1000 por omisión) y cada fila suya informa la pérdida final y si convergió.
+   `--epocas-rl` épocas (1000 por omisión, tasa 0,5) y cada fila suya informa la pérdida final y si convergió.
 2. **Etiquetado de palabras desconocidas con el HMM** (Viterbi, §24.1.6, pp. 880–881): exactitud global,
    en palabras conocidas y en desconocidas, frente a dos líneas base «sin HMM» sin contexto: (a) la
    etiqueta más frecuente entre las palabras raras del entrenamiento y (b) la etiqueta más frecuente para
@@ -29,7 +29,7 @@ Hipótesis (breve)
 Cómo correrlo (desde la raíz del repositorio)
 ---------------------------------------------
     docker compose run --rm ordenred python experimentos/e4_clasificacion_etiquetado.py --semillas 5
-    docker compose run --rm ordenred python experimentos/e4_clasificacion_etiquetado.py --fixtures --salida /tmp/e4
+    docker compose run --rm ordenred python experimentos/e4_clasificacion_etiquetado.py --fixtures --salida experimentos/resultados
 
 Sin Docker hace falta `PYTHONPATH=src`. Escribe `e4_curvas.csv`, `e4_hmm_unk.csv` y `e4_confusion.csv` en
 `--salida` (por omisión `experimentos/resultados/`). No dibuja figuras: las hace el rol 7 con estos CSV.
@@ -53,8 +53,10 @@ Notas de protocolo
   reales el modo es "tokenizar" y no hay respaldo silencioso.
 - Épocas de la RL: con los valores por omisión del clasificador (200 épocas, tasa 0,1) la pérdida aún baja
   claramente al final del entrenamiento, y una RL sin converger sesgaría la comparación con NB. Por eso
-  E4 usa 1000 épocas (`EPOCAS_RL`), fijadas de antemano y no elegidas mirando `dev`; la columna
-  `convergio` permite comprobarlo en cada corrida.
+  E4 usa 1000 épocas (`EPOCAS_RL`) con tasa 0,5 (`TASA_RL`), fijadas de antemano y no elegidas mirando
+  `dev`: se comprobó que convergen en un corpus sintético de tamaño realista (3500 órdenes de
+  entrenamiento, 7 intenciones), donde 1000 épocas con tasa 0,1 todavía no convergían. La columna
+  `convergio` lo comprueba en cada corrida; si sale False, suba `--epocas-rl`.
 """
 from __future__ import annotations
 
@@ -79,6 +81,7 @@ SALIDA_POR_OMISION = RAIZ / "experimentos" / "resultados"
 FRACCIONES = (0.1, 0.25, 0.5, 1.0)
 # Épocas de la regresión logística en E4 (ver «Notas de protocolo»).
 EPOCAS_RL = 1000
+TASA_RL = 0.5  # ver «Notas de protocolo»: con 0,1 la RL no alcanza a converger en 1000 épocas
 # Criterio de convergencia de la RL (ver `convergio`): |L[-1-VENTANA] − L[-1]| < max(TOL_REL·L[-1], TOL_ABS).
 # TOL_ABS = 1e-4 en 10 épocas (1e-5 por época) es despreciable frente a la escala de la entropía cruzada
 # (log K ≈ 1,95 con 7 clases).
@@ -169,8 +172,8 @@ def _nuevo_clasificador(modelo: str, epocas_rl: int = EPOCAS_RL):
     if modelo == "nb":
         return NaiveBayes()
     if modelo == "rl":
-        # Demás hiperparámetros por omisión (tasa, L2 y semilla interna fija).
-        return RegresionLogistica(epocas=epocas_rl)
+        # L2 y semilla interna por omisión; tasa y épocas según las «Notas de protocolo».
+        return RegresionLogistica(tasa=TASA_RL, epocas=epocas_rl)
     raise ValueError(f"modelo desconocido: {modelo!r}")
 
 

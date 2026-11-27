@@ -265,7 +265,9 @@ def a_acl_cisco(fls: list[FormaLogica], numero: int = 101) -> list[str]
   una regla léxica hacia una palabra: así una palabra desconocida («servidor») nunca recibe una categoría que
   en la gramática solo produce terminales especiales (`DIR -> "<IP>" | "<CIDR>"`). `etiquetas_unk` lanza
   `ValueError` si una posición está fuera de rango, si el dict trae posiciones que no se pidieron o si en
-  alguna posición `permitidas` no tiene ninguna etiqueta en común con el modelo.
+  alguna posición `permitidas` no tiene ninguna etiqueta en común con el modelo. Si con la etiqueta propuesta
+  el CYK devuelve `[]` (p. ej. «puerto veinte», donde la gramática exige un número), el pipeline lo informa
+  como orden sin análisis en `Resultado.advertencias`: es preferible a producir una regla con una IP falsa.
 - **Nota para el rol 1.** Hoy el CYK le asigna log P = 0 a la etiqueta del HMM en esa posición, así que solo
   cuenta cuál etiqueta se eligió, no con qué confianza. No bloquea; se deja anotado para E3/E4.
 
