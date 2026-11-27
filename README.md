@@ -29,11 +29,17 @@ Requiere Docker con `docker compose`. La imagen trae Python 3.13 y las versiones
 ```bash
 docker compose build                     # una vez
 docker compose run --rm ordenred         # corre todas las pruebas
-docker compose run --rm ordenred python experimentos/e4_clasificacion_etiquetado.py --fixtures --salida /tmp/e4   # cualquier otro comando
+docker compose run --rm ordenred python experimentos/e4_clasificacion_etiquetado.py --fixtures --salida experimentos/resultados   # cualquier otro comando
 ```
+
+El contenedor se borra al terminar (`--rm`): solo sobrevive lo que se escribe dentro del repositorio montado
+en `/app` (p. ej. `experimentos/resultados/`); lo que quede en `/tmp` del contenedor se pierde.
 
 En Git Bash (Windows), anteponga `MSYS_NO_PATHCONV=1` a los comandos que pasan rutas absolutas del
 contenedor (como `/tmp/e4`); si no, Git Bash las convierte en rutas de Windows y la salida termina dentro del repo.
+
+En Linux, si su usuario no tiene el uid 1000, construya la imagen con su uid para que los archivos creados en
+el montaje le pertenezcan: `docker compose build --build-arg UID=$(id -u)`.
 
 `tests/test_contratos.py` lista en `PENDIENTES` los métodos que aún son *stubs*. Al implementar uno,
 **quítelo de la lista**: la prueba falla si un método implementado sigue listado.
