@@ -49,6 +49,21 @@ class TestSubmuestra(unittest.TestCase):
         self.assertEqual(len({r["id"] for r in a}), len(a))
         self.assertNotEqual(a, e4.submuestra(regs, 0.25, 8))
 
+    def test_anidadas_por_semilla(self):
+        regs = [{"id": i} for i in range(40)]
+        for semilla in range(5):
+            previos: set[int] = set()
+            for fraccion in (0.1, 0.25, 0.5, 1.0):
+                ids = {r["id"] for r in e4.submuestra(regs, fraccion, semilla)}
+                self.assertTrue(previos <= ids, (semilla, fraccion))
+                previos = ids
+            self.assertEqual(previos, set(range(40)))
+
+    def test_conserva_el_orden_del_corpus(self):
+        regs = [{"id": i} for i in range(40)]
+        ids = [r["id"] for r in e4.submuestra(regs, 0.5, 2)]
+        self.assertEqual(ids, sorted(ids))
+
     def test_fraccion_invalida(self):
         with self.assertRaises(ValueError):
             e4.submuestra([{"id": 0}], 0.0, 0)
@@ -199,6 +214,45 @@ class TestCurvaYCorrer(unittest.TestCase):
         self.assertEqual({f["n_train"] for f in filas if f["fraccion"] == 0.1}, {1})
         self.assertEqual({f["n_train"] for f in filas if f["fraccion"] == 1.0}, {5})
         self.assertTrue(all(0.0 <= f["exactitud"] <= 1.0 for f in filas))
+        # Diagnóstico de la RL: solo en sus filas; con una sola clase (10 % = 1 orden) no hay pérdida.
+        for f in filas:
+            if f["modelo"] == "nb":
+                self.assertEqual((f["epocas"], f["perdida_final"], f["convergio"]), (None, None, None))
+            elif f["fraccion"] == 1.0:
+                self.assertEqual(f["epocas"], e4.EPOCAS_RL)
+                self.assertTrue(math.isfinite(f["perdida_final"]) and f["perdida_final"] > 0)
+                self.assertIn(f["convergio"], (True, False))
+            else:
+                self.assertTrue(math.isnan(f["perdida_final"]))
+                self.assertIsNone(f["convergio"])
+
+    def test_epocas_rl_y_perdida_final(self):
+        pocas = e4.curva_aprendizaje(MINI, MINI, (1.0,), [0], "fixtures", epocas_rl=5)
+        muchas = e4.curva_aprendizaje(MINI, MINI, (1.0,), [0], "fixtures", epocas_rl=300)
+        rl_pocas = next(f for f in pocas if f["modelo"] == "rl")
+        rl_muchas = next(f for f in muchas if f["modelo"] == "rl")
+        self.assertEqual((rl_pocas["epocas"], rl_muchas["epocas"]), (5, 300))
+        self.assertLess(rl_muchas["perdida_final"], rl_pocas["perdida_final"])
+        self.assertIsNone(rl_pocas["convergio"])  # 5 épocas ≤ ventana de 10: no se puede juzgar
+        with self.assertRaises(ValueError):
+            e4.curva_aprendizaje(MINI, MINI, (1.0,), [0], "fixtures", epocas_rl=0)
+
+    def test_convergio(self):
+        v = e4.VENTANA_CONVERGENCIA
+        self.assertIsNone(e4.convergio([1.0] * v))
+        self.assertFalse(e4.convergio([2.0] + [1.0] * v))  # L[-1-v] = 2.0: cae a la mitad en la ventana
+        self.assertTrue(e4.convergio([2.0] + [1.0] * (v + 1)))  # la caída quedó fuera de la ventana
+        self.assertTrue(e4.convergio([1.0] * (v + 1)))
+        # Pérdida grande: umbral relativo 1e-3 · L. Baja 0,1 en la ventana → no; baja 1e-4 (< 1e-3·0,9999) → sí.
+        self.assertFalse(e4.convergio([1.0 - 0.01 * k for k in range(v + 1)]))
+        self.assertTrue(e4.convergio([1.0 - 1e-5 * k for k in range(v + 1)]))
+        # Pérdida cercana a 0 (datos separables): 0,008 que baja 1e-6 por época. Mejora 1e-5 < TOL_ABS = 1e-4,
+        # aunque en términos relativos (1e-5 / 0,008 ≈ 1,3e-3) superaría TOL_REL → converge.
+        self.assertTrue(e4.convergio([0.008 + 1e-6 * (v - k) for k in range(v + 1)]))
+        # Cerca de 0 pero aún bajando 1e-3 por época: mejora 1e-2 > max(1e-3·0,01, 1e-4) → no converge.
+        self.assertFalse(e4.convergio([0.02 - 1e-3 * k for k in range(v + 1)]))
+        # Una pérdida que sube mucho tampoco cuenta como convergida.
+        self.assertFalse(e4.convergio([1.0 + 0.01 * k for k in range(v + 1)]))
 
     def test_correr_y_cli_producen_las_tres_tablas(self):
         rutas = {"train": FIXTURES / "mini_corpus.jsonl", "eval": FIXTURES / "mini_corpus.jsonl"}

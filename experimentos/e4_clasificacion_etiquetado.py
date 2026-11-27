@@ -5,7 +5,9 @@ Qué mide
 1. **Curvas de aprendizaje** de la clasificación de la intención: Naive Bayes (generativo, AIMA 4.ª ed.
    global, §24.1.1, pp. 875–876) frente a regresión logística (discriminativa, §24.1.6, pp. 881–883),
    entrenados con el 10, 25, 50 y 100 % de `train` y evaluados sobre el conjunto de evaluación
-   (`dev` por omisión). Métrica: exactitud de la intención.
+   (`dev` por omisión). Métrica: exactitud de la intención. Las submuestras están anidadas por semilla
+   (el 10 % está dentro del 25 %, etc.), lo que reduce la varianza de la curva. La RL se entrena con
+   `--epocas-rl` épocas (1000 por omisión) y cada fila suya informa la pérdida final y si convergió.
 2. **Etiquetado de palabras desconocidas con el HMM** (Viterbi, §24.1.6, pp. 880–881): exactitud global,
    en palabras conocidas y en desconocidas, frente a dos líneas base «sin HMM» sin contexto: (a) la
    etiqueta más frecuente entre las palabras raras del entrenamiento y (b) la etiqueta más frecuente para
@@ -37,6 +39,22 @@ Sin Docker hace falta `PYTHONPATH=src`. Escribe `e4_curvas.csv`, `e4_hmm_unk.csv
 Entrada de los modelos: los **terminales** (`Token.terminal`), según los acuerdos del rol 4 en C6. En modo
 "tokenizar" salen de `tokenizador.tokenizar` (rol 5); en modo "fixtures" de `tests.tokens_fixture`, que
 solo sirve para `tests/fixtures/mini_corpus.jsonl` (5 órdenes, 2 clases: los números no significan nada).
+
+Notas de protocolo
+------------------
+- **«Desconocida»** se define respecto al vocabulario del HMM (`hmm.es_conocida`: palabra nunca vista o
+  rara en su entrenamiento). En el pipeline (rol 6) las posiciones `<UNK>` las marca, en cambio,
+  `PCFG.indice_lexico` (fuera del léxico de la gramática). Ambos conjuntos pueden diferir; E4 mide la
+  capacidad del etiquetador, no el criterio del pipeline.
+- El HMM se evalúa con `viterbi` **sin** `permitidas` (no restringe la etiqueta a los preterminales de la
+  PCFG, como sí hace `etiquetas_unk` en el pipeline): es la exactitud del etiquetador por sí solo.
+- `tests.tokens_fixture` se usa **solo** con `--fixtures`, como prueba de humo del flujo mientras no exista
+  `tokenizar` (rol 5): únicamente distingue IP, CIDR y NUM, así que no sirve para el corpus real. Con datos
+  reales el modo es "tokenizar" y no hay respaldo silencioso.
+- Épocas de la RL: con los valores por omisión del clasificador (200 épocas, tasa 0,1) la pérdida aún baja
+  claramente al final del entrenamiento, y una RL sin converger sesgaría la comparación con NB. Por eso
+  E4 usa 1000 épocas (`EPOCAS_RL`), fijadas de antemano y no elegidas mirando `dev`; la columna
+  `convergio` permite comprobarlo en cada corrida.
 """
 from __future__ import annotations
 
@@ -59,6 +77,14 @@ FIXTURE_CORPUS = RAIZ / "tests" / "fixtures" / "mini_corpus.jsonl"
 SALIDA_POR_OMISION = RAIZ / "experimentos" / "resultados"
 
 FRACCIONES = (0.1, 0.25, 0.5, 1.0)
+# Épocas de la regresión logística en E4 (ver «Notas de protocolo»).
+EPOCAS_RL = 1000
+# Criterio de convergencia de la RL (ver `convergio`): |L[-1-VENTANA] − L[-1]| < max(TOL_REL·L[-1], TOL_ABS).
+# TOL_ABS = 1e-4 en 10 épocas (1e-5 por época) es despreciable frente a la escala de la entropía cruzada
+# (log K ≈ 1,95 con 7 clases).
+VENTANA_CONVERGENCIA = 10
+TOL_REL = 1e-3
+TOL_ABS = 1e-4
 PROPORCION_RETENIDA = 0.1
 # Una palabra que aparece en más de esta fracción de las oraciones de train no se retiene (quitaría demasiadas).
 MAX_FRACCION_ORACIONES = 0.3
@@ -116,9 +142,12 @@ def cargar_corpus(ruta: str | Path) -> list[dict]:
 
 
 def submuestra(registros: list[dict], fraccion: float, semilla: int) -> list[dict]:
-    """max(1, round(fraccion·N)) registros elegidos sin reemplazo con `random.Random(semilla)`.
+    """max(1, round(fraccion·N)) registros sin reemplazo, **anidados** por semilla.
 
-    Determinista: la misma semilla da la misma submuestra. Conserva el orden original del corpus.
+    Se baraja la lista de índices 0..N-1 una vez con `random.Random(semilla).shuffle` y se toma el prefijo
+    de longitud k. Como la permutación depende solo de la semilla y de N, para una misma semilla la
+    submuestra de una fracción menor está contenida en la de una mayor (el 10 % dentro del 25 %…), lo que
+    reduce la varianza de la curva de aprendizaje. Determinista; conserva el orden original del corpus.
     `round` es el de Python (redondeo al par: round(0.5) = 0, de ahí el max con 1).
     """
     if not registros:
@@ -126,8 +155,9 @@ def submuestra(registros: list[dict], fraccion: float, semilla: int) -> list[dic
     if not (0 < fraccion <= 1):
         raise ValueError(f"la fracción debe estar en (0, 1], no {fraccion}")
     k = max(1, round(fraccion * len(registros)))
-    indices = sorted(random.Random(semilla).sample(range(len(registros)), k))
-    return [registros[i] for i in indices]
+    permutacion = list(range(len(registros)))
+    random.Random(semilla).shuffle(permutacion)
+    return [registros[i] for i in sorted(permutacion[:k])]
 
 
 # --------------------------------------------------------------------------------------------
@@ -135,18 +165,55 @@ def submuestra(registros: list[dict], fraccion: float, semilla: int) -> list[dic
 # --------------------------------------------------------------------------------------------
 
 
-def _nuevo_clasificador(modelo: str):
+def _nuevo_clasificador(modelo: str, epocas_rl: int = EPOCAS_RL):
     if modelo == "nb":
         return NaiveBayes()
     if modelo == "rl":
-        return RegresionLogistica()  # hiperparámetros por omisión (semilla interna fija)
+        # Demás hiperparámetros por omisión (tasa, L2 y semilla interna fija).
+        return RegresionLogistica(epocas=epocas_rl)
     raise ValueError(f"modelo desconocido: {modelo!r}")
 
 
-def _entrenar_clasificador(modelo: str, registros: list[dict], modo: str):
-    clf = _nuevo_clasificador(modelo)
+def _entrenar_clasificador(modelo: str, registros: list[dict], modo: str, epocas_rl: int = EPOCAS_RL):
+    clf = _nuevo_clasificador(modelo, epocas_rl)
     clf.entrenar([terminales_registro(r, modo) for r in registros], [r["intencion"] for r in registros])
     return clf
+
+
+def convergio(historial: list[float]) -> bool | None:
+    """Indicador simple de convergencia del descenso por gradiente de la RL.
+
+    Criterio mixto, con V = `VENTANA_CONVERGENCIA`:
+
+        converge  ⇔  |L[-1-V] − L[-1]| < max(TOL_REL · L[-1], TOL_ABS)
+
+    La parte relativa juzga pérdidas grandes en su escala; la absoluta evita que una pérdida que tiende
+    a 0 (datos separables: L = 0,008 que aún baja 1e-6 por época) se marque como «no convergió» solo
+    porque cualquier mejora es grande en términos relativos. Se usa el valor absoluto de la diferencia
+    para que una pérdida que sube u oscila mucho tampoco cuente como convergida. None si el historial
+    tiene V o menos valores (p. ej. vacío cuando la submuestra tiene una sola clase).
+    """
+    v = VENTANA_CONVERGENCIA
+    if len(historial) <= v:
+        return None
+    anterior, ultima = historial[-1 - v], historial[-1]
+    return abs(anterior - ultima) < max(TOL_REL * ultima, TOL_ABS)
+
+
+def _diagnostico_rl(clf) -> dict:
+    """Columnas `epocas`, `perdida_final` y `convergio` de una fila de la RL.
+
+    `perdida_final` = `historial_perdida[-1]`: la pérdida L(W) (entropía cruzada media + L2) evaluada
+    antes de la última actualización, es decir, tras `epocas − 1` pasos; difiere de la del W final en un
+    solo paso de gradiente, y se usa porque es la que registra el propio clasificador. nan si el
+    historial está vacío (una sola clase en la submuestra).
+    """
+    historial = clf.historial_perdida
+    return {
+        "epocas": clf.epocas,
+        "perdida_final": historial[-1] if historial else math.nan,
+        "convergio": convergio(historial),
+    }
 
 
 def _exactitud(reales: list[str], predichas: list[str]) -> float:
@@ -156,22 +223,27 @@ def _exactitud(reales: list[str], predichas: list[str]) -> float:
 
 
 def curva_aprendizaje(
-    train: list[dict], evaluacion: list[dict], fracciones, semillas, modo: str
+    train: list[dict], evaluacion: list[dict], fracciones, semillas, modo: str, epocas_rl: int = EPOCAS_RL
 ) -> list[dict]:
     """Exactitud de intención de NB y RL entrenados con cada fracción de `train` y cada semilla.
 
-    Para cada (semilla, fracción) se toma `submuestra(train, fraccion, semilla)` y con ella se entrenan
-    ambos modelos (la misma submuestra para los dos, así la comparación es pareada). Filas:
-    {"modelo": "nb" | "rl", "fraccion", "semilla", "n_train", "exactitud"}.
+    Para cada (semilla, fracción) se toma `submuestra(train, fraccion, semilla)` (anidada por semilla) y
+    con ella se entrenan ambos modelos (la misma submuestra para los dos, así la comparación es pareada).
+    Filas: {"modelo": "nb" | "rl", "fraccion", "semilla", "n_train", "exactitud", "epocas",
+    "perdida_final", "convergio"}. Las tres últimas columnas son el diagnóstico de la RL
+    (`_diagnostico_rl`, `convergio`); en las filas de NB valen None (celda vacía en la CSV).
     """
+    if epocas_rl < 1:
+        raise ValueError(f"epocas_rl debe ser ≥ 1, no {epocas_rl}")
     X_eval = [terminales_registro(r, modo) for r in evaluacion]
     y_eval = [r["intencion"] for r in evaluacion]
+    sin_diagnostico = {"epocas": None, "perdida_final": None, "convergio": None}
     filas = []
     for semilla in semillas:
         for fraccion in fracciones:
             sub = submuestra(train, fraccion, semilla)
             for modelo in ("nb", "rl"):
-                clf = _entrenar_clasificador(modelo, sub, modo)
+                clf = _entrenar_clasificador(modelo, sub, modo, epocas_rl)
                 predichas = [clf.predecir(x)[0] for x in X_eval]
                 filas.append({
                     "modelo": modelo,
@@ -179,6 +251,7 @@ def curva_aprendizaje(
                     "semilla": semilla,
                     "n_train": len(sub),
                     "exactitud": _exactitud(y_eval, predichas),
+                    **(_diagnostico_rl(clf) if modelo == "rl" else sin_diagnostico),
                 })
     return filas
 
@@ -424,11 +497,13 @@ def correr(
     modo: str = "tokenizar",
     fracciones=FRACCIONES,
     proporcion_retenida: float = PROPORCION_RETENIDA,
+    epocas_rl: int = EPOCAS_RL,
 ) -> list[dict]:
     """Corre E4 con una semilla y devuelve filas planas con la columna "tabla".
 
-    rutas: {"train": ruta, "eval": ruta}. Tablas:
-    - "curvas": `curva_aprendizaje` con esta semilla.
+    rutas: {"train": ruta, "eval": ruta}. `epocas_rl` se usa en la RL de las curvas y de la confusión.
+    Tablas:
+    - "curvas": `curva_aprendizaje` con esta semilla (incluye el diagnóstico de convergencia de la RL).
     - "hmm_unk": una fila por condición, "completo" (HMM con todo `train`) y "retenido" (HMM con `train`
       sin las oraciones de las palabras retenidas por `retener_vocabulario(..., semilla)`), con las
       métricas de `exactitud_hmm` (en "completo", `n_retenidas_eval` = 0 y `exactitud_retenidas` = nan).
@@ -440,7 +515,7 @@ def correr(
     evaluacion = cargar_corpus(rutas["eval"])
     filas: list[dict] = []
 
-    for f in curva_aprendizaje(train, evaluacion, fracciones, [semilla], modo):
+    for f in curva_aprendizaje(train, evaluacion, fracciones, [semilla], modo, epocas_rl):
         filas.append({"tabla": "curvas", **f})
 
     train_ret, retenidas = retener_vocabulario(train, proporcion_retenida, semilla, modo)
@@ -463,7 +538,7 @@ def correr(
     X_eval = [terminales_registro(r, modo) for r in evaluacion]
     reales = [r["intencion"] for r in evaluacion]
     for modelo in ("nb", "rl"):
-        clf = _entrenar_clasificador(modelo, train, modo)
+        clf = _entrenar_clasificador(modelo, train, modo, epocas_rl)
         m = matriz_confusion(reales, [clf.predecir(x)[0] for x in X_eval], ACCIONES)
         for real in ACCIONES:
             for predicha in ACCIONES:
@@ -514,6 +589,13 @@ def resumen(filas: list[dict]) -> str:
         for modelo in ("nb", "rl"):
             vals = [f["exactitud"] for f in curvas if f["fraccion"] == fraccion and f["modelo"] == modelo]
             partes.append(f"{modelo} = {_media(vals):.3f}")
+        rl = [f for f in curvas if f["fraccion"] == fraccion and f["modelo"] == "rl"]
+        perdidas = [f["perdida_final"] for f in rl if f["perdida_final"] is not None]
+        juzgables = [f for f in rl if f["convergio"] is not None]  # None: una sola clase o pocas épocas
+        partes.append(
+            f"pérdida RL = {_media(perdidas):.3f}, "
+            f"RL convergió en {sum(f['convergio'] for f in juzgables)}/{len(juzgables)}"
+        )
         lineas.append(f"  {fraccion:>5.0%}: " + ", ".join(partes))
     lineas.append("HMM en palabras desconocidas (media):")
     hmm = [f for f in filas if f["tabla"] == "hmm_unk"]
@@ -545,9 +627,13 @@ def main(argv: list[str] | None = None) -> int:
                    help="usa tests/fixtures/mini_corpus.jsonl como train y eval, con tokens_fixture")
     p.add_argument("--semillas", type=int, default=5, help="número de semillas (0..N-1)")
     p.add_argument("--salida", default=str(SALIDA_POR_OMISION), help="directorio de las CSV")
+    p.add_argument("--epocas-rl", type=int, default=EPOCAS_RL,
+                   help=f"épocas de la regresión logística (por omisión {EPOCAS_RL}; ver «Notas de protocolo»)")
     args = p.parse_args(argv)
     if args.semillas < 1:
         p.error("--semillas debe ser ≥ 1")
+    if args.epocas_rl < 1:
+        p.error("--epocas-rl debe ser ≥ 1")
 
     if args.fixtures:
         if args.train is not None or args.eval is not None:
@@ -561,7 +647,9 @@ def main(argv: list[str] | None = None) -> int:
         modo = "tokenizar"
 
     try:
-        filas = [f for s in range(args.semillas) for f in correr(s, rutas, modo)]
+        filas = [
+            f for s in range(args.semillas) for f in correr(s, rutas, modo, epocas_rl=args.epocas_rl)
+        ]
     except (FileNotFoundError, RuntimeError, ValueError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 1
